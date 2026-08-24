@@ -1,0 +1,81 @@
+name: Template bug
+description: Report a reproducible defect in CLIProxyAPI — Secure Release-Tracked
+title: "[Template bug]: "
+labels:
+  - template bug
+  - S2 docs-setup
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never post proxy/management keys, provider credentials, OAuth/device codes, cookies, account files, Authorization headers, prompts/responses, private domains, Railway IDs/tokens, volume archives, complete environment dumps, or unredacted logs. Use a private advisory for security defects.
+  - type: input
+    id: package_commit
+    attributes:
+      label: Package commit
+      description: Public commit SHA only.
+    validations:
+      required: true
+  - type: input
+    id: pins
+    attributes:
+      label: Public CLIProxyAPI and panel pins
+      placeholder: "CLIProxyAPI v7.2.141 sha256:7f598...; panel v1.22.6 sha256:e264..."
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Clean deploy or health
+        - Proxy key or API authentication
+        - Management key or pinned panel
+        - Provider authorization documentation
+        - Volume, restart, backup, or restore
+        - Release controller, update, or rollback
+        - Other package documentation
+    validations:
+      required: true
+  - type: input
+    id: topology
+    attributes:
+      label: Sanitized topology
+      placeholder: "one cliproxyapi service; one /data volume; one replica"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Safe reproduction
+      description: Use disposable state and synthetic provider-free checks where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: sanitized_logs
+    attributes:
+      label: Minimal sanitized logs
+      render: shell
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Safety and scope confirmation
+      options:
+        - label: I removed all template/provider credentials, headers, account data, prompts/responses, private identifiers, archives, and unredacted logs.
+          required: true
+        - label: I checked whether this is upstream, provider, custom-client, or Railway platform behavior.
+          required: true
+        - label: I searched existing issues for a duplicate.
+          required: true

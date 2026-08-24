@@ -1,0 +1,114 @@
+name: Stable upstream release controller
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Check for a stable release or roll back to the retained prior digest
+        required: true
+        type: choice
+        default: check
+        options:
+          - check
+          - rollback
+
+concurrency:
+  group: cliproxyapi-release-controller
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  promote-or-rollback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      UPSTREAM_REPOSITORY: router-for-me/CLIProxyAPI
+      IMAGE_REPOSITORY: eceasy/cli-proxy-api
+    steps:
+      - name: Check out the accepted controller
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+
+      - name: Run controller unit and static policy tests
+        run: SKIP_DOCKER_TESTS=1 tests/run.sh
+
+      - name: Prepare stable promotion or retained rollback
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION: ${{ github.event.inputs.operation || 'check' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          default_branch=$(jq -r .repository.default_branch "$GITHUB_EVENT_PATH")
+          [[ "$GITHUB_REF_NAME" == "$default_branch" ]]
+          now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          if [[ "$OPERATION" == "rollback" ]]; then
+            python3 scripts/release_controller.py rollback --now "$now"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "smoke_mode=rollback-target" >> "$GITHUB_OUTPUT"
+            echo "summary=rollback to retained prior digest" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          release_json=$(gh api "repos/${UPSTREAM_REPOSITORY}/releases?per_page=50")
+          candidate=$(jq -r '
+            [.[] |
+              select(.draft == false and .prerelease == false) |
+              select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))
+            ] | sort_by(.published_at) | last |
+            [.tag_name, .published_at] | @tsv
+          ' <<<"$release_json")
+          [[ "$candidate" != "null	null" && -n "$candidate" ]]
+          IFS=$'\t' read -r tag published_at <<<"$candidate"
+
+          raw_manifest=$(mktemp)
+          trap 'rm -f "$raw_manifest"' EXIT
+          docker buildx imagetools inspect "${IMAGE_REPOSITORY}:${tag}" --raw > "$raw_manifest"
+          digest="sha256:$(sha256sum "$raw_manifest" | awk '{print $1}')"
+
+          result=$(python3 scripts/release_controller.py check \
+            --tag "$tag" \
+            --digest "$digest" \
+            --published-at "$published_at" \
+            --now "$now")
+          decision=$(jq -r .decision <<<"$result")
+          if [[ "$decision" != "promote" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "summary=${decision}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          python3 scripts/release_controller.py promote \
+            --tag "$tag" \
+            --digest "$digest" \
+            --published-at "$published_at" \
+            --now "$now"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "smoke_mode=full" >> "$GITHUB_OUTPUT"
+          echo "summary=promote ${tag} at ${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Run full candidate auth, UI, state, transition, and restart smoke
+        if: steps.prepare.outputs.changed == 'true'
+        run: tests/run.sh "${{ steps.prepare.outputs.smoke_mode }}"
+
+      - name: Commit the tested immutable pin
+        if: success() && steps.prepare.outputs.changed == 'true'
+        env:
+          SUMMARY: ${{ steps.prepare.outputs.summary }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code -- entrypoint.sh health-proxy.go
+          git config user.name "cliproxyapi-release-controller[bot]"
+          git config user.email "cliproxyapi-release-controller[bot]@users.noreply.github.com"
+          git add Dockerfile release-state.json SOURCE_SHA256SUMS
+          git diff --cached --quiet && exit 0
+          git commit -m "release: ${SUMMARY}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

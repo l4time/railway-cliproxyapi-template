@@ -1,0 +1,8 @@
+* @l4time
+/.github/workflows/ @l4time
+/Dockerfile @l4time
+/entrypoint.sh @l4time
+/health-proxy.go @l4time
+/release-state.json @l4time
+/scripts/ @l4time
+/SECURITY.md @l4time

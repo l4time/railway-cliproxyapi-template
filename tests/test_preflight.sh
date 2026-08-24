@@ -1,0 +1,221 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT"
+MODE=${1:-full}
+case "$MODE" in
+  full|rollback-target) ;;
+  *) printf 'unsupported smoke mode: %s\n' "$MODE" >&2; exit 64 ;;
+esac
+STATE_FILE=${STATE_FILE:-release-state.json}
+PREFIX=cliproxy-template-test
+NETWORK="${PREFIX}-net"
+VOLUME="${PREFIX}-data"
+CURRENT_IMAGE="${PREFIX}:current"
+OLD_IMAGE="${PREFIX}:prior"
+CONTAINER="${PREFIX}-app"
+PORT=18317
+PROXY_KEY_FILE=$(mktemp)
+MANAGEMENT_KEY_FILE=$(mktemp)
+LOG_FILE=$(mktemp)
+
+cleanup() {
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker network rm "$NETWORK" >/dev/null 2>&1 || true
+  docker volume rm "$VOLUME" >/dev/null 2>&1 || true
+  docker image rm "$CURRENT_IMAGE" "$OLD_IMAGE" >/dev/null 2>&1 || true
+  rm -f "$PROXY_KEY_FILE" "$MANAGEMENT_KEY_FILE" "$LOG_FILE"
+}
+trap cleanup EXIT INT TERM
+cleanup
+
+CURRENT_DIGEST=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["current"]["digest"])' "$STATE_FILE")
+PRIOR_DIGEST=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["prior"]["digest"])' "$STATE_FILE")
+
+openssl rand -hex 32 > "$PROXY_KEY_FILE"
+openssl rand -hex 32 > "$MANAGEMENT_KEY_FILE"
+chmod 0600 "$PROXY_KEY_FILE" "$MANAGEMENT_KEY_FILE"
+PROXY_KEY=$(cat "$PROXY_KEY_FILE")
+MANAGEMENT_KEY=$(cat "$MANAGEMENT_KEY_FILE")
+export CLIPROXY_PROXY_KEY="$PROXY_KEY"
+export CLIPROXY_MANAGEMENT_KEY="$MANAGEMENT_KEY"
+
+if [ "$MODE" = "full" ]; then
+  docker build --build-arg "UPSTREAM_IMAGE=eceasy/cli-proxy-api@${PRIOR_DIGEST}" -t "$OLD_IMAGE" "$ROOT" >/dev/null
+fi
+docker build --build-arg "UPSTREAM_IMAGE=eceasy/cli-proxy-api@${CURRENT_DIGEST}" -t "$CURRENT_IMAGE" "$ROOT" >/dev/null
+IMAGES=$CURRENT_IMAGE
+if [ "$MODE" = "full" ]; then
+  IMAGES="$OLD_IMAGE $CURRENT_IMAGE"
+fi
+for image in $IMAGES; do
+  history=$(docker history --no-trunc "$image")
+  ! printf '%s' "$history" | grep -F "$PROXY_KEY" >/dev/null
+  ! printf '%s' "$history" | grep -F "$MANAGEMENT_KEY" >/dev/null
+done
+printf '%s\n' 'image-history secret absence: PASS'
+docker network create "$NETWORK" >/dev/null
+docker volume create "$VOLUME" >/dev/null
+initial_mode=$(docker run --rm -v "${VOLUME}:/data" busybox stat -c '%u:%g:%a' /data)
+[ "$initial_mode" = "0:0:755" ]
+printf 'pristine volume %s: PASS\n' "$initial_mode"
+
+assert_status() {
+  expected=$1
+  shift
+  actual=$(curl -sS -o /dev/null -w '%{http_code}' "$@")
+  [ "$actual" = "$expected" ] || {
+    printf 'expected HTTP %s, got %s\n' "$expected" "$actual" >&2
+    return 1
+  }
+}
+
+wait_health() {
+  tries=0
+  until [ "$tries" -ge 60 ]; do
+    if curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1; then
+      return 0
+    fi
+    tries=$((tries + 1))
+    sleep 0.25
+  done
+  return 1
+}
+
+start_app() {
+  image=$1
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker run -d \
+    --name "$CONTAINER" \
+    --network "$NETWORK" \
+    --cpus 0.25 \
+    --memory 256m \
+    --pids-limit 128 \
+    --read-only \
+    --tmpfs /run:rw,nosuid,nodev,noexec,size=8m,mode=0755 \
+    --tmpfs /tmp:rw,nosuid,nodev,noexec,size=8m,mode=1777 \
+    -p "127.0.0.1:${PORT}:8080" \
+    -e CLIPROXY_PROXY_KEY \
+    -e CLIPROXY_MANAGEMENT_KEY \
+    -v "${VOLUME}:/data" \
+    "$image" >/dev/null
+  wait_health
+}
+
+check_runtime() {
+  assert_status 200 "http://127.0.0.1:${PORT}/healthz"
+  [ "$(curl -fsS "http://127.0.0.1:${PORT}/healthz")" = "ok" ]
+
+  assert_status 401 "http://127.0.0.1:${PORT}/v1/models"
+  assert_status 401 -H "Authorization: Bearer wrong" "http://127.0.0.1:${PORT}/v1/models"
+  assert_status 200 -H "Authorization: Bearer ${PROXY_KEY}" "http://127.0.0.1:${PORT}/v1/models"
+
+  assert_status 401 "http://127.0.0.1:${PORT}/v0/management/config"
+  assert_status 401 -H "Authorization: Bearer wrong" "http://127.0.0.1:${PORT}/v0/management/config"
+  assert_status 200 -H "Authorization: Bearer ${MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/config"
+  assert_status 401 -H "Authorization: Bearer ${PROXY_KEY}" "http://127.0.0.1:${PORT}/v0/management/config"
+  assert_status 200 "http://127.0.0.1:${PORT}/management.html"
+  ui_hash=$(curl -fsS "http://127.0.0.1:${PORT}/management.html" | shasum -a 256 | cut -d' ' -f1)
+  [ "$ui_hash" = "e2643e0875e0024e5ff9ddf4569e4c58611ab0456aeb6fa6065ed3e6c2b721f4" ]
+
+  uid=$(docker exec "$CONTAINER" awk '/^Uid:/ {print $2}' /proc/1/status)
+  [ "$uid" = "10001" ]
+  docker exec "$CONTAINER" sh -c '
+    test "$(stat -c "%u:%g:%a" /data)" = "10001:10001:750"
+    test "$(stat -c "%u:%g:%a" /data/auth)" = "10001:10001:700"
+    test "$(stat -c "%u:%g:%a" /data/home)" = "10001:10001:700"
+    test "$(stat -c "%u:%g:%a" /data/state)" = "10001:10001:700"
+    test "$(stat -c "%u:%g:%a" /data/auth/preflight-marker)" = "10001:10001:600"
+    test "$(stat -c "%u:%g:%a" /run/cliproxy/config.yaml)" = "10001:10001:600"
+    test "$(find /data -xdev ! -user 10001 -print -quit)" = ""
+  '
+
+  argv=$(docker exec "$CONTAINER" sh -c 'tr "\\000" " " </proc/1/cmdline; for p in /proc/[0-9]*/cmdline; do tr "\\000" " " <"$p"; done')
+  docker exec --user 10001:10001 "$CONTAINER" sh -c '
+    ! tr "\000" "\n" </proc/1/environ | grep -Eq "^CLIPROXY_(PROXY|MANAGEMENT)_KEY="
+  '
+  logs=$(docker logs "$CONTAINER" 2>&1)
+  health=$(curl -fsS "http://127.0.0.1:${PORT}/healthz")
+  printf '%s' "$argv$logs$health" > "$LOG_FILE"
+  ! grep -F "$PROXY_KEY" "$LOG_FILE" >/dev/null
+  ! grep -F "$MANAGEMENT_KEY" "$LOG_FILE" >/dev/null
+  ! printf '%s' "$logs" | grep -Eqi 'management.*(download|fallback)|control panel.*(download|fallback)'
+  printf '%s\n' 'runtime auth/state/UI/security gates: PASS'
+}
+
+expect_init_failure() {
+  pk=$1
+  mk=$2
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker run --name "$CONTAINER" \
+    --read-only \
+    --tmpfs /run:rw,nosuid,nodev,noexec,size=8m,mode=0755 \
+    -e "CLIPROXY_PROXY_KEY=$pk" \
+    -e "CLIPROXY_MANAGEMENT_KEY=$mk" \
+    -v "${VOLUME}:/data" \
+    "$CURRENT_IMAGE" >/dev/null 2>&1 && return 1
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+}
+
+for target in proxy management; do
+  for scenario in missing malformed documented short; do
+    pk=$PROXY_KEY
+    mk=$MANAGEMENT_KEY
+    case "$target:$scenario" in
+      proxy:missing) pk= ;;
+      proxy:malformed) pk='not valid spaces' ;;
+      proxy:documented) pk='your-api-key-123456789012345678901234567890' ;;
+      proxy:short) pk='short' ;;
+      management:missing) mk= ;;
+      management:malformed) mk='not valid spaces' ;;
+      management:documented) mk='management-key-123456789012345678901234567890' ;;
+      management:short) mk='short' ;;
+    esac
+    expect_init_failure "$pk" "$mk"
+  done
+done
+expect_init_failure "$PROXY_KEY" "$PROXY_KEY"
+printf '%s\n' 'invalid and equal key matrix: PASS'
+
+docker run --rm -v "${VOLUME}:/data" busybox chmod 0777 /data
+expect_init_failure "$PROXY_KEY" "$MANAGEMENT_KEY"
+docker run --rm -v "${VOLUME}:/data" busybox chmod 0755 /data
+docker run --rm -v "${VOLUME}:/data" busybox chown 123:123 /data
+expect_init_failure "$PROXY_KEY" "$MANAGEMENT_KEY"
+docker run --rm -v "${VOLUME}:/data" busybox sh -c 'chown 0:0 /data && chmod 0755 /data'
+printf '%s\n' 'unsafe volume matrix: PASS'
+
+docker run --rm -v "${VOLUME}:/data" busybox sh -c 'mkdir -p /data/auth && printf "%s\n" marker > /data/auth/preflight-marker && chown 10001:10001 /data/auth/preflight-marker && chmod 600 /data/auth/preflight-marker'
+
+if [ "$MODE" = "rollback-target" ]; then
+  TRANSITIONS="$CURRENT_IMAGE $CURRENT_IMAGE"
+else
+  TRANSITIONS="$OLD_IMAGE $CURRENT_IMAGE $OLD_IMAGE $CURRENT_IMAGE"
+fi
+for image in $TRANSITIONS; do
+  start_app "$image"
+  check_runtime
+  [ "$(docker exec "$CONTAINER" cat /data/auth/preflight-marker)" = "marker" ]
+  version=$(docker logs "$CONTAINER" 2>&1 | sed -n 's/.*CLIProxyAPI Version: \([^,]*\).*/\1/p' | head -1)
+  printf 'state-preserving transition %s: PASS\n' "$version"
+done
+if [ "$MODE" = "rollback-target" ]; then
+  printf '%s\n' 'rollback target validated without booting outgoing current: PASS'
+fi
+
+child_pid=$(docker exec "$CONTAINER" sh -c 'for p in /proc/[0-9]*; do read comm < "$p/comm" 2>/dev/null || continue; if [ "$comm" = CLIProxyAPI ]; then printf "%s\n" "${p#/proc/}"; break; fi; done')
+[ -n "$child_pid" ]
+docker exec "$CONTAINER" sh -c "kill -9 $child_pid"
+exit_code=$(docker wait "$CONTAINER")
+[ "$exit_code" != "0" ]
+printf 'forced child exit propagation (%s): PASS\n' "$exit_code"
+start_app "$CURRENT_IMAGE"
+
+docker restart "$CONTAINER" >/dev/null
+wait_health
+check_runtime
+[ "$(docker exec "$CONTAINER" cat /data/auth/preflight-marker)" = "marker" ]
+printf '%s\n' 'restart persistence: PASS'
+docker stats --no-stream --format 'bounded resources: {{.MemUsage}} | {{.CPUPerc}}' "$CONTAINER"
+printf '%s\n' 'ALL CONTAINER GATES: PASS'

@@ -1,0 +1,33 @@
+- name: S0 security-data
+  color: B60205
+  description: Urgent credential exposure, auth bypass, supply-chain, or data-integrity risk
+- name: S1 deploy
+  color: D93F0B
+  description: Clean deploy, health, auth, panel, persistence, update, or rollback failure
+- name: S2 docs-setup
+  color: FBCA04
+  description: Documentation, variables, provider setup, backup, or troubleshooting defect
+- name: S3 enhancement-upstream
+  color: 0E8A16
+  description: Optional enhancement or upstream/provider-dependent change
+- name: template bug
+  color: 5319E7
+  description: Reproducible defect in the Railway package or documented contract
+- name: upstream
+  color: C5DEF5
+  description: Behavior owned by CLIProxyAPI or Management Center upstream
+- name: provider-policy
+  color: D4C5F9
+  description: Provider authorization, subscription, terms, quota, or account issue
+- name: user config
+  color: D4C5F9
+  description: Client, key rotation, provider account, or custom configuration
+- name: security-private
+  color: B60205
+  description: Public placeholder only; details must move to a private advisory
+- name: duplicate
+  color: CCCCFF
+  description: Duplicate of an existing issue
+- name: needs reproduction
+  color: E99695
+  description: Requires a safe, minimal, reproducible example

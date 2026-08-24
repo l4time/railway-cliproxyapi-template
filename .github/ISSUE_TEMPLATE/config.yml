@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: https://github.com/l4time/railway-cliproxyapi-template/security/advisories/new
+    about: Report package vulnerabilities privately. Never post keys, provider credentials, or account data.
+  - name: Upstream CLIProxyAPI issues
+    url: https://github.com/router-for-me/CLIProxyAPI/issues
+    about: Report upstream application behavior and feature requests.
+  - name: Railway platform support
+    url: https://railway.com/help
+    about: Use Railway support for account, billing, build, domain, volume, or platform incidents.
