@@ -36,7 +36,7 @@ Possible decisions:
 Only `promote` modifies the working tree. The controller changes exactly the
 two accepted Dockerfile pin lines, moves the previous current record into
 `prior`, and refreshes the Dockerfile record in `SOURCE_SHA256SUMS`.
-The checksum file must contain exactly three ordered, exact-format records and
+The checksum file must contain exactly four ordered, exact-format records and
 must verify the pre-change Dockerfile. Missing, malformed, duplicate, reordered,
 or stale records fail before mutation. Updated Dockerfile, state, and checksum
 content are prepared together. Each file is atomically replaced; a caught
