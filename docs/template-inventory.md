@@ -16,7 +16,7 @@ publication, consumer smoke, cleanup, and monitoring remain separate gates.
 | Architecture | Single-service secure gateway plus volume |
 | Service / volume | One `cliproxyapi`; one `/data` |
 | Public port / health | `8080`; `/healthz` |
-| Replicas / Serverless / restart | One / off / ON_FAILURE once |
+| Replicas / Serverless / restart | One / off / ON_FAILURE, maximum 10 retries |
 | Extra service | None |
 
 ## Variables
