@@ -1,10 +1,20 @@
 # Changelog
 
-All notable changes to CLIProxyAPI — Secure Release-Tracked are documented
+All notable changes to CLIProxyAPI — Daily Auto-Update are documented
 here.
 
 ## 2026-08-25
 
+- Add the consumer-side stable-release updater: 6-hour checks plus bounded
+  jitter, rolling-24-hour attempt ceiling, anonymous official GitHub Releases,
+  exact architecture/checksum verification, strict archive extraction,
+  protected persistent ledger, private candidate probe, crash journal,
+  quarantine, graceful cutover, bounded probation, and binary-only rollback.
+- Retain the image binary as immutable fallback and bound storage to embedded,
+  current, prior, and at most one staged executable. Preserve live user state.
+- Add Go unit/race/vet coverage for semantic versions, soak/clock skew,
+  cadence, ETag/rate limiting, URL allowlists, checksum drift, archive attacks,
+  locks, bounds, journal recovery, and retry ceilings.
 - Initial package from the corrected Railway R2 proof.
 - Pin CLIProxyAPI `v7.2.141` to immutable index digest
   `sha256:7f598ce64478a8a5f90ed76875e0e9b0e7d77b80e17184b13df18c3d5bdb3def`.
@@ -43,17 +53,29 @@ here.
 - Make promotion and rollback update the exact Dockerfile
   `SOURCE_SHA256SUMS` record in the same fail-closed release transaction;
   malformed, missing, or stale checksum records block before mutation.
+- Rename the public display name to `CLIProxyAPI — Daily Auto-Update` while
+  retaining the stable public code and deploy URL
+  `cliproxyapi-secure-release-tracked`.
+- Record independent R7 QA acceptance of the exact 42-file updater package.
+  Railway Phase A then proved an overdue boot check, verified
+  `v7.2.141 → v7.2.142` promotion, authentication/UI/state continuity, and
+  persistence across the sole service restart. A separate fresh Railway
+  rollback proof acquired and privately probed bad-live `v7.2.143`, rejected
+  its authenticated live semantics, quarantined its exact identity, and
+  restored healthy `v7.2.141`; sanitized log and bounded-resource gates passed.
 
 ## Release update policy
 
-Only the repository controller changes CLIProxyAPI pins. It must accept a
-stable semantic GitHub release, resolve the matching immutable Docker manifest,
-pass policy, then pass the full container smoke before committing. The
-Management Center is reviewed and updated separately.
+Each deployed supervisor can advance its local executable after a 6-hour soak
+and complete supply-chain/private-probe gates. It checks at boot when overdue,
+then every 6 hours plus bounded jitter, with a rolling-24-hour attempt guarantee
+for a continuously running service. The repository controller still qualifies
+future embedded fallbacks through immutable image pins and full container
+smoke. The Management Center is reviewed and updated separately.
 
 ## Rollback policy
 
-The controller retains one prior tag/digest and tests it before committing a
-manual rollback. Persisted provider state is not automatically reversible.
-Keep a stopped encrypted pre-update backup and restore it with the prior image
-when compatibility cannot be proved.
+The runtime retains one prior verified executable and automatically performs a
+binary-only rollback on failed readiness/probation. Persisted provider state is
+never automatically restored and may not be downgrade-compatible. Keep a
+stopped encrypted backup for explicit recovery.

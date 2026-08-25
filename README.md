@@ -1,8 +1,9 @@
-# CLIProxyAPI — Secure Release-Tracked
+# CLIProxyAPI — Daily Auto-Update
 
 Deploy [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) as one
-digest-pinned Railway service with separate generated proxy and administration
-keys, a persistent `/data` volume, and a checksum-pinned Management Center.
+Railway service with an immutable embedded fallback, a verified in-service
+stable-release updater, separate generated proxy and administration keys, a
+persistent `/data` volume, and a checksum-pinned Management Center.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cliproxyapi-secure-release-tracked)
 
@@ -22,13 +23,18 @@ terms.
   administration.
 - CLIProxyAPI `v7.2.141`, initially pinned to immutable image digest
   `sha256:7f598ce6…bdb3def`.
+- A private runtime supervisor that checks the official GitHub stable release
+  feed every 6 hours plus at most 30 minutes of deterministic jitter, verifies
+  the architecture-specific archive and upstream checksums, probes a candidate
+  privately, and performs binary-only cutover or rollback.
 - Management Center `v1.22.6`, bundled at build time and verified with SHA-256
   `e2643e08…2b721f4`.
 
 There is no database, Redis, Bucket, worker, scheduler, provider account,
-provider token, shared credential, runtime updater, or Railway token in the
-application. Serverless is off, there is one replica, and failed processes get
-at most 10 automatic retries under Railway's finite `ON_FAILURE` policy.
+provider token, shared credential, Railway token, or GitHub token in the
+application. The updater uses anonymous HTTPS reads of official upstream
+GitHub Releases. Serverless is off, there is one replica, and failed processes
+get at most 10 automatic retries under Railway's finite `ON_FAILURE` policy.
 
 ## Architecture
 
@@ -37,11 +43,11 @@ API client -- Bearer proxy key ------+
                                      |
 Browser -- pinned /management.html --+--> Railway HTTPS :8080
                                             |
-                                  rootless health/reverse proxy
+                            rootless supervisor/reverse proxy/updater
                                             |
                                   CLIProxyAPI 127.0.0.1:8317
                                             |
-                         /data/auth  /data/home  /data/state
+                    /data/auth  /data/home  /data/state  /data/update
 ```
 
 The root entrypoint performs only the narrow ownership/configuration bootstrap
@@ -53,7 +59,8 @@ child environment, and drops permanently to UID/GID `10001`. Existing
 settings survive restart; the two Railway variables remain authoritative after
 key rotation. Every wrapper-owned network, TLS, management, panel, auth-path,
 logging, statistics, and WebSocket-auth baseline is reasserted on boot.
-CLIProxyAPI is never bound directly to the public port.
+CLIProxyAPI is never bound directly to the public port. The updater has no
+public endpoint; `/healthz` is the only unauthenticated wrapper route.
 
 ## Deploy
 
@@ -124,6 +131,10 @@ The volume boundary is `/data`:
 - `/data/home`: the rootless runtime home.
 - `/data/state`: package-reserved persistent configuration, including the two
   template access credentials in `/data/state/config.yaml`.
+- `/data/update`: mode-`0700` updater ledger, embedded fallback, current and
+  prior verified binaries, transient staged candidate, quarantine decisions,
+  cadence timestamps, ETag, and crash-recovery phase. Files are bounded and
+  written with restrictive modes and atomic `fsync` + rename.
 
 Railway ext4 volumes may expose `/data/lost+found`. That directory is
 filesystem-maintenance metadata, may remain root-owned, and is not CLIProxyAPI
@@ -137,8 +148,8 @@ credentials. Store every backup encrypted, restrict access, and apply the
 providers' security requirements.
 
 1. Stop the service or otherwise ensure CLIProxyAPI is not writing.
-2. Archive the complete app-owned `/data/auth`, `/data/home`, and
-   `/data/state` trees with paths, ownership, modes, and hidden files.
+2. Archive the complete app-owned `/data/auth`, `/data/home`, `/data/state`,
+   and `/data/update` trees with paths, ownership, modes, and hidden files.
 3. Do not include or modify `/data/lost+found`; record it as excluded
    filesystem metadata.
 4. Record the CLIProxyAPI tag/digest, Management Center version/checksum,
@@ -156,42 +167,63 @@ the provider and reauthorize rather than trusting the archive. If
 `/data/state/config.yaml` may have leaked, rotate both Railway template keys
 after restore; provider revocation is still separate.
 
-## Release tracking, update, and rollback
+## Runtime stable-release update and rollback
 
-The application never self-updates. A repository GitHub Actions controller:
+Every deployed instance owns its update cycle; Railway or repository
+redeployment is not required:
 
-1. Inspects official upstream GitHub Releases, accepting only non-draft,
-   non-prerelease `vMAJOR.MINOR.PATCH` tags.
-2. Waits at least 12 hours after publication.
-3. Resolves the matching Docker image to an immutable manifest digest.
-4. Requires the candidate numeric semantic version to be greater than the
-   current version; equal is a no-op only for the same digest, while lower or
-   equal-tag/different-digest candidates fail closed.
-5. Refuses duplicate, rollback-target, malformed, or more-than-one-per-24-hour
-   promotions.
-6. Builds the candidate and runs the full key/auth/UI/state/restart/version
-   transition smoke.
-7. Atomically refreshes and verifies the Dockerfile entry in
-   `SOURCE_SHA256SUMS`, then commits only the tested Dockerfile, release ledger,
-   and checksum record.
-8. Retains the previous tag/digest for a tested manual rollback.
+1. On boot it checks immediately when the persisted schedule is absent,
+   overdue, or implausibly more than 23 hours in the future. While running it
+   checks every 6 hours plus deterministic per-installation jitter of at most
+   30 minutes. Transient retries are capped so a continuously running instance
+   attempts within every rolling 24 hours.
+2. It queries only `router-for-me/CLIProxyAPI` GitHub Releases and accepts the
+   highest numeric, exact `vMAJOR.MINOR.PATCH` release that is non-draft and
+   non-prerelease. Major versions pass the same gates; there is no silent major
+   hold. A release soaks for 6 hours, within the 12-hour safety ceiling.
+3. It downloads exactly `checksums.txt` and the one matching
+   `linux_amd64`/`linux_aarch64` archive over an HTTPS/final-host allowlist.
+   It bounds metadata, asset count, names and sizes, verifies the exact SHA-256
+   line, rejects checksum reuse drift, and stream-extracts only the expected
+   regular executable. Links, traversal, duplicate names and tar-shape drift
+   fail closed.
+4. It stages with `O_NOFOLLOW`, safe modes, an advisory single-updater lock,
+   atomic `fsync` + rename, and a persistent phase journal. A private candidate
+   starts on loopback with disposable state and proves its exact version,
+   readiness, proxy/management credential separation, bundled UI, and clean
+   exit. The upstream control plane is never exposed.
+5. A passing candidate replaces only the executable. Live
+   `/data/auth`, `/data/home`, and `/data/state` remain in place, so the updater
+   never restores stale user data or discards writes. Readiness and bounded
+   probation failure automatically restore the prior verified binary.
+6. The embedded image binary remains an immutable fallback. Storage retains
+   embedded, current, prior, and at most one staged candidate. A deterministic
+   bad tag is quarantined instead of downloaded repeatedly.
 
-It uses only the repository-scoped GitHub token; it has no Railway token and
-does not copy application/provider secrets. A linked Railway source deployment
-may build the accepted commit automatically, but this package is named
-“Secure Release-Tracked” until clean consumer evidence proves Railway's update
-serialization and rollback behavior. Do not rename it or market it as an
-automatic-update product before that gate passes.
+The ledger records attempt start, last success, next check, observed ETag,
+accepted checksums, sanitized failure class/reason, phase and exact
+`tag@checksum` quarantine under `/data/update`; it never contains
+provider, proxy, management, Railway, or GitHub credentials. Logs report only
+sanitized outcomes.
 
-Before an update, make an encrypted stopped backup. Rollback changes the image
-pin, not provider-side tokens or persisted state. If the older image cannot
-safely open current state in a disposable copy, restore the pre-update backup
-together with the last proved image.
+Binary-only rollback cannot guarantee compatibility with an upstream release
+that irreversibly migrates persisted provider state. The candidate probe uses
+disposable state, but it cannot predict every real provider/account behavior.
+Keep encrypted stopped backups for critical installations, and restore user
+state only as an explicit operator recovery action.
 
-Emergency rollback validates only the retained rollback target. It does not
-build or boot the outgoing image, which may be broken. The target still must
-pass the complete auth, pinned-UI, state, restart, child-failure, secret, and
-resource smoke; any target failure stops before commit.
+The external GitHub Actions release controller remains a build-time
+qualification/canary layer for future embedded fallbacks. It is not the
+consumer update mechanism.
+
+Independent R7 QA accepted the exact runtime package and its release, redirect,
+archive, recovery, authentication, and rollback fixtures. Separate Railway
+proofs then observed an overdue boot check promote `v7.2.141` to the verified
+fixture `v7.2.142`, retain it across the sole service restart, and, in a fresh
+rollback proof, quarantine an exact bad-live `v7.2.143` after authenticated
+live semantic validation failed while automatically restoring healthy
+`v7.2.141`. Those bounded fixtures prove the mechanism, not compatibility with
+every future upstream release or state migration.
 
 ## Operations and troubleshooting
 

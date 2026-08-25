@@ -4,11 +4,11 @@
 
 | Component | Pin / behavior | Boundary |
 |---|---|---|
-| CLIProxyAPI | `v7.2.141`, immutable index digest in `release-state.json` | Loopback `127.0.0.1:8317`; never directly public |
+| CLIProxyAPI | Embedded `v7.2.141` immutable fallback; runtime may advance to a verified newer stable tag | Loopback `127.0.0.1:8317`; never directly public |
 | Management Center | `v1.22.6`, SHA-256 `e2643e08…2b721f4` | Bundled local static asset; upstream auto-download disabled |
-| Health proxy | Package-owned, rootless PID 1 after initialization | Public `:8080`; `/healthz` plus reverse proxy |
+| Runtime supervisor | Package-owned, rootless PID 1 after initialization | Public `:8080`; `/healthz` plus reverse proxy; private updater has no HTTP endpoint |
 | Entrypoint + config reconciler | Package-owned, exact proved sources | Narrow root volume/config initialization and atomic key reconciliation, then UID/GID `10001` |
-| Volume | Railway `/data` | Provider auth, rootless home, and protected persistent config/state; one replica only |
+| Volume | Railway `/data` | Provider auth, rootless home, protected config/state, and bounded `/data/update` ledger/binaries; one replica only |
 
 The public health endpoint tests only loopback TCP readiness and returns `ok`.
 It does not return models, configuration, provider state, account identifiers,
@@ -53,9 +53,16 @@ Not supported:
 - Multiple replicas sharing one filesystem volume.
 - A runtime process with a Railway or GitHub token.
 
+The updater trusts anonymous HTTPS responses only after exact host, stable-tag,
+asset, size, checksum, archive, version and private auth/UI probe checks. It
+uses a single-writer lock, `O_NOFOLLOW`, safe modes, atomic `fsync` + rename,
+and a crash phase journal. Candidate probing and cutover never expose an
+updater or upstream control endpoint.
+
 ## Hard stops
 
 Pause publication or promotion on auth bypass, equal/default keys, public
 upstream port, missing volume, unexpected panel download, checksum drift,
 secret output, root runtime, extra service, multiple replicas, Serverless,
-unproved state migration, provider policy conflict, or failed cleanup.
+unproved state migration, updater checksum/archive/tag drift, failed candidate
+probe/rollback, provider policy conflict, or failed cleanup.

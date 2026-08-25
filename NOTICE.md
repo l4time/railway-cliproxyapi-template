@@ -10,8 +10,11 @@ This package builds from
 upstream contributors and distributed under the MIT License. The initial
 runtime uses `v7.2.141` at immutable Docker manifest digest
 `sha256:7f598ce64478a8a5f90ed76875e0e9b0e7d77b80e17184b13df18c3d5bdb3def`.
-The runtime image and bundled dependencies retain their upstream notices and
-terms.
+The embedded fallback image and bundled dependencies retain their upstream
+notices and terms. At runtime, the package may download a newer official stable
+CLIProxyAPI Linux archive and `checksums.txt` from the upstream GitHub Release;
+the verified executable remains governed by CLIProxyAPI's MIT license and
+upstream notices.
 
 The image also bundles
 [CLIProxyAPI Management Center](https://github.com/router-for-me/Cli-Proxy-API-Management-Center)

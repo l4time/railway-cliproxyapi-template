@@ -12,13 +12,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class StaticContractTests(unittest.TestCase):
-    def test_runtime_source_hashes_match_accepted_correction(self) -> None:
+    def test_runtime_source_hashes_match_manifest(self) -> None:
+        records = {}
+        for line in (ROOT / "SOURCE_SHA256SUMS").read_text().splitlines():
+            digest, name = line.split("  ", 1)
+            self.assertRegex(digest, r"^[0-9a-f]{64}$")
+            self.assertNotIn(name, records)
+            records[name] = digest
         expected = {
-            "entrypoint.sh": "d6d686fd3b58a366bf26dc505518801773be4a1e0f0d5b6760c96c9720eeae9c",
-            "config-reconciler.go": "c31d7d3e1acfdd42adbbdad2ad2f9d17418911d8dcf7087f6dde31456415a75a",
-            "health-proxy.go": "ccd459062c3b7e2c36790a85971aa40ab559cb59a98fb9b7c707436029571e1c",
+            "Dockerfile",
+            "entrypoint.sh",
+            "config-reconciler.go",
+            "health-proxy.go",
+            "health-proxy_test.go",
         }
-        for name, digest in expected.items():
+        self.assertEqual(set(records), expected)
+        for name, digest in records.items():
             actual = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
             self.assertEqual(actual, digest, name)
 
@@ -35,6 +44,7 @@ class StaticContractTests(unittest.TestCase):
             "releases/download/v1.22.6/management.html", dockerfile
         )
         self.assertNotIn(":latest", dockerfile)
+        self.assertIn("-X main.embeddedVersion=${EMBEDDED_VERSION}", dockerfile)
         self.assertIn(
             "golang:1.25.5-bookworm@sha256:"
             "d9132cce84391efab786495288756d60e1da215b1f94e87860aeefc3d4c45b6d",
@@ -119,6 +129,29 @@ class StaticContractTests(unittest.TestCase):
         health_proxy = (ROOT / "health-proxy.go").read_text()
         self.assertIn('"/data/state/config.yaml"', health_proxy)
         self.assertNotIn('"/run/cliproxy/config.yaml"', health_proxy)
+
+    def test_runtime_updater_is_private_bounded_and_rootless(self) -> None:
+        source = (ROOT / "health-proxy.go").read_text()
+        entrypoint = (ROOT / "entrypoint.sh").read_text()
+        for required in (
+            "defaultInterval    = 6 * time.Hour",
+            "maxJitter          = 30 * time.Minute",
+            "maxAttemptGap      = 23 * time.Hour",
+            "releaseSoak        = 6 * time.Hour",
+            "checksums.txt",
+            "same-tag checksum drift",
+            "archive entry contract rejected",
+            "links and non-regular entries rejected",
+            "binary-only rollback",
+            "syscall.O_NOFOLLOW",
+            "syscall.Flock",
+            '"127.0.0.1:8317"',
+        ):
+            self.assertIn(required, source)
+        self.assertNotRegex(source, r'HandleFunc\("/(?:update|admin|status)')
+        self.assertIn('"$DATA_DIR/update"', entrypoint)
+        self.assertIn("--no-new-privs", entrypoint)
+        self.assertIn('--reuid="$APP_UID"', entrypoint)
 
 
 if __name__ == "__main__":

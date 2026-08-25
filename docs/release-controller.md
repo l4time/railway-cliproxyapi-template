@@ -2,9 +2,11 @@
 
 ## Purpose
 
-The controller turns upstream release availability into a small, auditable,
-fail-closed source change. It runs in GitHub Actions, not in the Railway
-application, and never receives Railway or provider credentials.
+The external controller turns upstream release availability into a small,
+auditable, fail-closed embedded-fallback source change. It runs in GitHub
+Actions, never receives Railway or provider credentials, and remains a
+build-time qualification/canary defense. Deployed consumers update through the
+separate credential-free runtime supervisor documented in the README.
 
 ## Scheduled promotion
 
@@ -36,7 +38,7 @@ Possible decisions:
 Only `promote` modifies the working tree. The controller changes exactly the
 two accepted Dockerfile pin lines, moves the previous current record into
 `prior`, and refreshes the Dockerfile record in `SOURCE_SHA256SUMS`.
-The checksum file must contain exactly four ordered, exact-format records and
+The checksum file must contain exactly five ordered, exact-format records and
 must verify the pre-change Dockerfile. Missing, malformed, duplicate, reordered,
 or stale records fail before mutation. Updated Dockerfile, state, and checksum
 content are prepared together. Each file is atomically replaced; a caught
@@ -75,9 +77,9 @@ containers, images, network, and volume on exit. Shell tracing is not enabled.
 After smoke, GitHub commits only `Dockerfile`, `release-state.json`, and
 `SOURCE_SHA256SUMS`.
 Repository branch protection and Railway source deployment remain external
-controls. This kit does not claim that every accepted commit reaches every
-consumer automatically; the public consumer serialization gate must prove that
-behavior before an update-focused product name is used.
+controls. Accepted commits refresh the immutable embedded fallback; they are
+not required for the deployed runtime updater to accept a verified newer
+official stable executable.
 
 ## Rollback
 

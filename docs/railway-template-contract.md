@@ -1,7 +1,7 @@
 # Railway Template Contract
 
 Template candidate: `cliproxyapi-secure-release-tracked`  
-Public product name: `CLIProxyAPI — Secure Release-Tracked`  
+Public product name: `CLIProxyAPI — Daily Auto-Update`
 Package date: 2026-08-25  
 Kit version: `2026-07-04-v1`
 
@@ -41,13 +41,14 @@ template variables.
 
 | Component | Accepted pin |
 |---|---|
-| CLIProxyAPI | `v7.2.141`; `eceasy/cli-proxy-api@sha256:7f598ce64478a8a5f90ed76875e0e9b0e7d77b80e17184b13df18c3d5bdb3def` |
+| CLIProxyAPI | Embedded fallback `v7.2.141`; `eceasy/cli-proxy-api@sha256:7f598ce64478a8a5f90ed76875e0e9b0e7d77b80e17184b13df18c3d5bdb3def`; runtime may advance to a verified newer official stable executable |
 | Management Center | `v1.22.6`; `management.html` SHA-256 `e2643e0875e0024e5ff9ddf4569e4c58611ab0456aeb6fa6065ed3e6c2b721f4` |
 | Steady-state identity | UID/GID `10001`; no new privileges |
 
-The release ledger may advance the CLIProxyAPI tag/digest only through the
-tested external controller. The panel pin changes separately after review and
-full regression.
+The runtime ledger may advance the local CLIProxyAPI executable only through
+the private updater contract below. The external controller advances the
+embedded fallback pin only after its separate full regression. The panel pin
+changes separately after review and full regression.
 
 ## HTTP behavior
 
@@ -64,7 +65,8 @@ operations remain management-key protected.
 
 ## Persistence
 
-App-owned state is `/data/auth`, `/data/home`, and `/data/state`. The Management
+App-owned state is `/data/auth`, `/data/home`, `/data/state`, and
+`/data/update`. The Management
 API configuration is the protected regular file `/data/state/config.yaml`
 (UID/GID `10001`, mode `0600`, single link). Boot preserves non-secret
 allowlist fields `debug`, `request-retry`, `max-retry-credentials`, and
@@ -81,7 +83,40 @@ One stopped encrypted backup must precede updates. A live copy, shared-volume
 replica, binary-only state downgrade, or atomic replacement-volume operation is
 not promised.
 
-## Release-controller contract
+`/data/update` is UID/GID `10001`, mode `0700`. It contains only the bounded
+release ledger, lock, embedded/current/prior/staged executable slots, and
+disposable private-probe paths. Ledger/binaries are mode `0600`/`0755` and use
+no-follow, atomic, synced writes.
+
+## Runtime updater contract
+
+- Anonymous official `router-for-me/CLIProxyAPI` GitHub releases only; no
+  Railway, GitHub, template, application, or provider credential.
+- Highest forward stable exact `vMAJOR.MINOR.PATCH`; no draft, prerelease,
+  downgrade, malformed tag, or unexplained future publication time.
+- Check every 6 hours plus deterministic jitter at most 30 minutes; check on
+  boot when overdue; transient retry/clamping ensures an attempt within every
+  rolling 24 hours for a continuously running instance.
+- Six-hour safety soak, including major releases, before the same complete
+  candidate contract. No major bypass or silent hold.
+- Exact `checksums.txt` plus one `linux_amd64`/`linux_aarch64` asset over
+  TLS/final-host allowlist; strict counts, names, sizes, checksum line and
+  same-tag immutability.
+- Streaming archive parser allows only observed bounded regular upstream files
+  and extracts exactly one executable; no links, paths, duplicates, device
+  entries, traversal, wrong mode/name, or unbounded decompression.
+- Single-updater advisory lock, bounded slots, ETag/rate-limit handling,
+  deterministic quarantine, and persistent crash phase.
+- Private loopback candidate proves exact version, start/readiness,
+  proxy/management missing/cross/correct authentication, bundled UI, and clean
+  exit without routing the upstream control plane publicly.
+- Cutover changes only the executable. Live protected user state is never
+  rewound or restored. Start/readiness/probation failure restores only the
+  retained prior verified binary.
+- No updater HTTP endpoint. `/healthz` remains the only unauthenticated wrapper
+  route.
+
+## External release-controller contract
 
 - Official `router-for-me/CLIProxyAPI` GitHub releases only.
 - Stable exact `vMAJOR.MINOR.PATCH`; no draft or prerelease.

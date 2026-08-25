@@ -34,6 +34,8 @@ cleanup
 
 CURRENT_DIGEST=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["current"]["digest"])' "$STATE_FILE")
 PRIOR_DIGEST=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["prior"]["digest"])' "$STATE_FILE")
+CURRENT_TAG=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["current"]["tag"])' "$STATE_FILE")
+PRIOR_TAG=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["prior"]["tag"])' "$STATE_FILE")
 
 openssl rand -hex 32 > "$PROXY_KEY_FILE"
 openssl rand -hex 32 > "$MANAGEMENT_KEY_FILE"
@@ -44,9 +46,15 @@ export CLIPROXY_PROXY_KEY="$PROXY_KEY"
 export CLIPROXY_MANAGEMENT_KEY="$MANAGEMENT_KEY"
 
 if [ "$MODE" = "full" ]; then
-  docker build --build-arg "UPSTREAM_IMAGE=eceasy/cli-proxy-api@${PRIOR_DIGEST}" -t "$OLD_IMAGE" "$ROOT" >/dev/null
+  docker build \
+    --build-arg "UPSTREAM_IMAGE=eceasy/cli-proxy-api@${PRIOR_DIGEST}" \
+    --build-arg "EMBEDDED_VERSION=${PRIOR_TAG}" \
+    -t "$OLD_IMAGE" "$ROOT" >/dev/null
 fi
-docker build --build-arg "UPSTREAM_IMAGE=eceasy/cli-proxy-api@${CURRENT_DIGEST}" -t "$CURRENT_IMAGE" "$ROOT" >/dev/null
+docker build \
+  --build-arg "UPSTREAM_IMAGE=eceasy/cli-proxy-api@${CURRENT_DIGEST}" \
+  --build-arg "EMBEDDED_VERSION=${CURRENT_TAG}" \
+  -t "$CURRENT_IMAGE" "$ROOT" >/dev/null
 IMAGES=$CURRENT_IMAGE
 if [ "$MODE" = "full" ]; then
   IMAGES="$OLD_IMAGE $CURRENT_IMAGE"
@@ -123,12 +131,29 @@ check_runtime() {
 
   uid=$(docker exec "$CONTAINER" awk '/^Uid:/ {print $2}' /proc/1/status)
   [ "$uid" = "10001" ]
+  [ "$(docker exec "$CONTAINER" awk '/^NoNewPrivs:/ {print $2}' /proc/1/status)" = "1" ]
+  [ "$(docker exec "$CONTAINER" awk '/^CapEff:/ {print $2}' /proc/1/status)" = "0000000000000000" ]
+  docker exec --privileged "$CONTAINER" sh -c '
+    for status in /proc/1/status /proc/[0-9]*/status; do
+      [ -r "$status" ] || continue
+      pid=${status%/status}
+      pid=${pid#/proc/}
+      [ "$pid" = 1 ] || [ "$(awk "/^PPid:/ {print \$2}" "$status" 2>/dev/null)" = 1 ] || continue
+      environ="/proc/${pid}/environ"
+      [ -r "$environ" ] || exit 1
+      ! tr "\000" "\n" < "$environ" | grep -Eq "^CLIPROXY_(PROXY|MANAGEMENT)_KEY=" || exit 1
+    done
+  '
   docker exec "$CONTAINER" sh -c '
     test "$(stat -c "%u:%g:%a" /data)" = "10001:10001:750"
     test "$(stat -c "%u:%g:%a" /data/auth)" = "10001:10001:700"
     test "$(stat -c "%u:%g:%a" /data/home)" = "10001:10001:700"
     test "$(stat -c "%u:%g:%a" /data/state)" = "10001:10001:700"
+    test "$(stat -c "%u:%g:%a" /data/update)" = "10001:10001:700"
     test "$(stat -c "%u:%g:%a" /data/state/config.yaml)" = "10001:10001:600"
+    test "$(stat -c "%u:%g:%a" /data/update/ledger.json)" = "10001:10001:600"
+    test "$(stat -c "%u:%g:%a" /data/update/bin/embedded)" = "10001:10001:755"
+    test "$(stat -c "%u:%g:%a" /data/update/bin/current)" = "10001:10001:755"
     test "$(stat -c "%u:%g:%a" /data/auth/preflight-marker)" = "10001:10001:600"
     test ! -e /run/cliproxy/config.yaml
     test "$(find /data/state -maxdepth 1 -name ".config.yaml.tmp.*" -print -quit)" = ""
@@ -201,13 +226,22 @@ expect_bad_state_failure() {
 
 seed_canonical_bad_volume() {
   reset_bad_volume
-  docker run --rm \
-    --entrypoint sh \
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker run -d \
+    --name "$CONTAINER" \
+    --read-only \
+    --tmpfs /run:rw,nosuid,nodev,noexec,size=8m,mode=0755 \
     -e "CLIPROXY_PROXY_KEY=$PROXY_KEY" \
     -e "CLIPROXY_MANAGEMENT_KEY=$MANAGEMENT_KEY" \
     -v "${BAD_VOLUME}:/data" \
-    "$CURRENT_IMAGE" \
-    -c 'install -d -m 700 -o 10001 -g 10001 /data/state && /usr/local/bin/config-reconciler /data/state'
+    "$CURRENT_IMAGE" >/dev/null
+  tries=0
+  until docker exec "$CONTAINER" test -f /data/state/config.yaml >/dev/null 2>&1; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 40 ] || return 1
+    sleep 0.1
+  done
+  docker rm -f "$CONTAINER" >/dev/null
 }
 
 expect_mutated_config_failure() {
@@ -399,12 +433,19 @@ wait_health
 unset OLD_PROXY_KEY OLD_MANAGEMENT_KEY CONFIG_CHECKSUM ROTATED_CHECKSUM
 printf '%s\n' 'generated-key rotation and old-key invalidation: PASS'
 
-child_pid=$(docker exec "$CONTAINER" sh -c 'for p in /proc/[0-9]*; do read comm < "$p/comm" 2>/dev/null || continue; if [ "$comm" = CLIProxyAPI ]; then printf "%s\n" "${p#/proc/}"; break; fi; done')
+child_pid=$(docker exec "$CONTAINER" sh -c 'for p in /proc/[0-9]*; do [ "${p#/proc/}" != 1 ] || continue; ppid=$(awk "/^PPid:/ {print \$2}" "$p/status" 2>/dev/null || true); if [ "$ppid" = 1 ]; then printf "%s\n" "${p#/proc/}"; break; fi; done')
 [ -n "$child_pid" ]
 docker exec "$CONTAINER" sh -c "kill -9 $child_pid"
-exit_code=$(docker wait "$CONTAINER")
-[ "$exit_code" != "0" ]
-printf 'forced child exit propagation (%s): PASS\n' "$exit_code"
+if [ "$MODE" = "rollback-target" ]; then
+  exit_code=$(docker wait "$CONTAINER")
+  [ "$exit_code" != "0" ]
+  printf 'forced child exit propagation (%s): PASS\n' "$exit_code"
+else
+  wait_health
+  docker inspect -f '{{.State.Running}}' "$CONTAINER" | grep -Fx true >/dev/null
+  [ "$(docker exec "$CONTAINER" cat /data/auth/preflight-marker)" = "marker" ]
+  printf '%s\n' 'forced child crash automatic binary rollback with live state preserved: PASS'
+fi
 start_app "$CURRENT_IMAGE"
 
 docker restart "$CONTAINER" >/dev/null

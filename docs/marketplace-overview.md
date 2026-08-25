@@ -2,7 +2,7 @@
 
 ## Listing identity
 
-- Name: `CLIProxyAPI — Secure Release-Tracked`
+- Name: `CLIProxyAPI — Daily Auto-Update`
 - Proposed code: `cliproxyapi-secure-release-tracked`
 - Suggested category: `AI`
 - Repository: `https://github.com/l4time/railway-cliproxyapi-template`
@@ -11,9 +11,9 @@
 
 ## Short description
 
-Run CLIProxyAPI as a private, digest-pinned gateway with separate generated API
-and admin keys, remote provider authorization, persistent state, and tested
-stable-release rollback.
+Run CLIProxyAPI as a private gateway with separate generated API/admin keys,
+remote provider authorization, persistent state, an immutable embedded
+fallback, and verified stable-release update/rollback.
 
 ## Overview copy
 
@@ -27,15 +27,21 @@ proxy. Provider authorization persists under `/data/auth`; remote operators use
 the management key, while Codex and other compatible clients use the distinct
 proxy key.
 
-An external GitHub controller watches stable semantic upstream releases, waits
-12 hours, resolves an immutable image digest, runs complete auth/UI/state and
-update/rollback smoke, limits promotions, and retains the prior digest. The
-running app contains no updater or Railway token.
+The private runtime supervisor checks official stable semantic upstream
+releases every 6 hours plus bounded jitter, waits 6 hours, verifies the exact
+architecture archive against upstream checksums, probes it on loopback, and
+retains prior and embedded binaries for binary-only rollback. Overdue boots
+check immediately, and a continuously running instance attempts within every
+rolling 24 hours. It has no public updater route, Railway token, GitHub token,
+or provider credential. The external controller remains a build-time canary
+for embedded fallbacks.
 
 Provider accounts, subscriptions, credentials, shared access, and usage are not
 included. Operators must be authorized and follow provider terms. The package
 does not guarantee provider compatibility, permission, model behavior, cost,
-privacy, uptime, or automatic consumer updates.
+privacy, uptime, GitHub availability, or persisted-state downgrade
+compatibility. Automatic rollback never rewinds live user state; irreversible
+upstream migrations require explicit stopped-backup recovery.
 
 ## Services and inputs
 
@@ -52,11 +58,10 @@ then configure clients with the public base URL and proxy key.
 
 ## Asset plan
 
-The initial listing requests an explicit no-custom-icon/no-screenshot exception
+The published listing uses the accepted no-custom-icon/no-screenshot exception
 to avoid copied upstream/provider marks and credential-bearing UI. Railway may
-use a neutral platform default if required. QA and the publish packet must
-accept the exception or provide an original, provenance-recorded asset before
-publication.
+use a neutral platform default. Any future custom asset must be original and
+provenance-recorded before publication.
 
 ## Draft review
 
