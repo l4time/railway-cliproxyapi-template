@@ -17,6 +17,19 @@ here.
   template serialization (`restartPolicyMaxRetries=10`); runtime code, auth,
   topology, health, volume, and release-controller behavior are unchanged.
 - Add separate generated proxy/management keys with fail-closed validation.
+- Persist Management API changes in protected `/data/state/config.yaml`; add a
+  descriptor-relative, no-symlink, atomic reconciler that reapplies rotated
+  Railway keys.
+- Add restart checksum, generated-key rotation/old-key invalidation,
+  ownership/mode, malformed-state, and symlink/path regressions.
+- Harden persistence R2 after independent QA: render every wrapper-owned
+  security/topology field from the package baseline on every boot; retain only
+  `debug` and three bounded retry settings; reject ambiguous YAML tokens,
+  duplicate/unknown fields, anchors, aliases, tags, inline/document syntax,
+  credential order/cardinality drift, and malformed prefixes.
+- Correct the health proxy's standalone config default to
+  `/data/state/config.yaml` and prove wildcard `:8317` cannot survive a
+  malicious persisted-config seed.
 - Add the external stable-release controller, 12-hour soak, immutable digest,
   complete candidate smoke, one-per-24-hour limit, retained prior pin, and
   tested rollback path.
