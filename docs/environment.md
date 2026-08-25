@@ -26,10 +26,16 @@ The public template contract is stricter: both values come from independent
 | `HOME` | Entrypoint-owned `/data/home`; do not set in the template. |
 
 Do not add CLIProxyAPI YAML settings as ad-hoc environment variables. The
-entrypoint creates a mode-`0600` ephemeral configuration that binds upstream to
-loopback, enables authenticated remote management, disables panel self-update,
-sets `/data/auth`, disables file logging/statistics, and injects only the
-validated keys before removing them from the child environment.
+entrypoint initializes a mode-`0600` persistent configuration at
+`/data/state/config.yaml` that binds upstream to loopback, enables
+authenticated remote management, disables panel self-update, sets
+`/data/auth`, and initially disables file logging/statistics. Subsequent boots
+preserve only `debug`, `request-retry`, `max-retry-credentials`, and
+`max-retry-interval`; they atomically reconcile the two validated Railway keys
+and reassert loopback, port, TLS, remote-management, panel, auth-directory,
+logging, statistics, and WebSocket-auth baselines before removing keys from the
+child environment. Other YAML changes are intentionally not a supported
+persistence contract.
 
 ## Provider credentials
 
@@ -53,3 +59,8 @@ volume backup as a credential backup.
 
 Never rotate both template keys and all provider authorization simultaneously
 without a verified recovery path.
+
+The persisted config contains both template credentials. Back it up only in a
+stopped, encrypted archive. Restoring an older config does not override the
+current Railway variables: the next boot reconciles the current values and
+invalidates keys stored in the archive.
