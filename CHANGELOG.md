@@ -12,7 +12,10 @@ here.
   `e2643e0875e0024e5ff9ddf4569e4c58611ab0456aeb6fa6065ed3e6c2b721f4`.
 - Preserve the proved Dockerfile, entrypoint, and health-proxy sources.
 - Define one service, one `/data` volume, port `8080`, `/healthz`, one replica,
-  Serverless off, and ON_FAILURE with one retry.
+  Serverless off, and ON_FAILURE with a finite maximum of 10 retries.
+- Reconcile the restart maximum with Railway's independently reproduced public
+  template serialization (`restartPolicyMaxRetries=10`); runtime code, auth,
+  topology, health, volume, and release-controller behavior are unchanged.
 - Add separate generated proxy/management keys with fail-closed validation.
 - Add the external stable-release controller, 12-hour soak, immutable digest,
   complete candidate smoke, one-per-24-hour limit, retained prior pin, and
