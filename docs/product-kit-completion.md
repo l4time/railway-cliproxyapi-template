@@ -6,13 +6,13 @@
 | Kit version | `2026-07-04-v1` |
 | Archetype | Single-service secure gateway plus one `/data` volume |
 | Completion owner | `cliproxy_template_builder`; main thread integrates |
-| Runtime evidence | Entrypoint/health hashes preserved; Dockerfile changed only to pin the exact Go builder digest and was re-proved |
+| Runtime evidence | Persistence R2 adds strict grammar/allowlist parsing, canonical security-field rendering, wildcard-listener regression, and corrected health default; full re-proof and independent re-QA are required |
 | Required kit pieces | Deploy/setup, variables, operations, support, changelog/update, marketplace, issue/labels, legal/security/trademark, inventory, QA — builder complete |
 | Release value | External numeric-forward controller with soak/digest/smoke/daily gates, target-only rollback, and transactional source-checksum refresh; no app updater/token |
 | Provider boundary | User-authorized accounts only; no shared credentials, auth bypass, included subscription, provider permission, or free-use promise |
 | Asset status | Explicit initial no-custom-asset exception; no copied logo or credential-bearing screenshot |
-| QA blocker status | All five independent re-QA findings implemented; final 14/14 static and full forward Docker PASS, prior target-only rollback PASS retained; final independent re-QA pending |
-| Publish readiness | Not claimed; public repository, draft serialization, asset exception, links, publish packet, consumer smoke, cleanup, and monitoring pending |
+| QA blocker status | First persistence QA rejected two P1s; R2 builder/security regression PASS, with independent re-QA pending |
+| Publish readiness | Already published; persistence correction requires independent re-QA, exact repository sync, and a fresh clean public consumer smoke before monitoring acceptance |
 | Monitoring intake | Prepared in docs; dashboard rows remain main-thread work after publication |
 | Main-thread memory targets | Build/Publish Work Order, Product Kit Adoption, Active Subagent Registry closure, QA result, draft/publish/smoke/cleanup, published registry and monitoring contract |
 | Compaction | Collapse detailed build evidence to ledger/file refs after the 30-day review unless a defect remains |
@@ -22,7 +22,7 @@
 | Piece | Artifact | Builder | Independent |
 |---|---|---|---|
 | Non-expert deploy and remote OAuth | README, environment guide | Complete | Pending |
-| Runtime/config and key separation | Dockerfile, scripts, contract | Complete | Pending |
+| Runtime/config and key separation | Dockerfile, config reconciler, scripts, contract | Persistence correction complete | Correction re-QA pending |
 | Persistence, backup, lost+found | README, operations | Complete | Pending |
 | External update/rollback | workflow, controller, ledger, source checksum, guide | Complete | Pending |
 | Provider/legal/support boundary | README, security, notices, issue routes | Complete | Pending |
