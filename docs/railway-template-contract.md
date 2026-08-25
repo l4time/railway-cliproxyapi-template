@@ -15,7 +15,7 @@ Kit version: `2026-07-04-v1`
 | Volume | One Railway volume mounted at `/data` |
 | Health | `GET /healthz`, timeout 60 seconds |
 | Replicas | One |
-| Restart | `ON_FAILURE`, maximum one retry |
+| Restart | `ON_FAILURE`, maximum 10 retries |
 | Serverless | Disabled |
 | Other resources | No database, Redis, Bucket, worker, scheduler, TCP proxy, or second service |
 
