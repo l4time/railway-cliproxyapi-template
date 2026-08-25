@@ -92,6 +92,20 @@ class StaticContractTests(unittest.TestCase):
             "OPERATION: ${{ github.event.inputs.operation || 'check' }}",
             workflow,
         )
+        self.assertIn(
+            'echo "release-controller decision=${decision} '
+            'candidate=${tag} digest=${digest}"',
+            workflow,
+        )
+        self.assertIn('} >> "$GITHUB_STEP_SUMMARY"', workflow)
+        self.assertIn("defer:*|noop:*)", workflow)
+        self.assertIn("reject:*)", workflow)
+        self.assertIn(
+            "Release controller rejected candidate", workflow
+        )
+        self.assertIn(
+            "Release controller returned an unknown decision", workflow
+        )
         self.assertIn("smoke_mode=rollback-target", workflow)
         self.assertIn(
             'tests/run.sh "${{ steps.prepare.outputs.smoke_mode }}"', workflow
