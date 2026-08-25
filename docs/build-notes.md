@@ -22,6 +22,45 @@ Future release promotion necessarily changes the two upstream Dockerfile digest
 lines. The entrypoint and health proxy remain byte-locked unless a separately
 reviewed runtime change receives new proof.
 
+## Persistent management-config correction
+
+The 2026-08-25 public consumer smoke proved `/data` survived restart but the
+wrapper recreated `/run/cliproxy/config.yaml`, reverting Management API
+`debug=true` to false. The corrected runtime stores the config at
+`/data/state/config.yaml` and adds a static Go reconciler. It opens the state
+directory and config without following symlinks, requires UID/GID `10001`,
+directory mode `0700`, regular single-link config mode `0600`, rejects malformed
+credential structure, reconciles both current Railway keys, writes and syncs a
+same-directory temporary file, then atomically renames and syncs the directory.
+The first correction preserved arbitrary non-secret YAML. Independent QA
+rejected that design after `host: "0.0.0.0"` survived and malformed credential
+prefixes were normalized. R2 instead parses a strict deterministic grammar,
+retains only debug plus three bounded retry fields, renders all wrapper-owned
+security/topology values canonically, and rejects ambiguous or unknown schema.
+The accepted allowlist remains checksum-identical across restart; key rotation
+replaces and invalidates old proxy and management keys.
+
+This is an intentional runtime change. The table above is historical. R2 also
+updates the health proxy's standalone default from the stale `/run` path to
+`/data/state/config.yaml`. Final current hashes, exact 38-file inventory, full
+forward and rollback-target suites, and zero-residue audit replace the earlier
+runtime-source proof only after this correction passes.
+
+| Corrected runtime file | SHA-256 |
+|---|---|
+| `Dockerfile` | `ac91145e2d5ddcfd68471f2ca0880af52ed60ee38a4f15448342ff92b3a5c35b` |
+| `entrypoint.sh` | `d6d686fd3b58a366bf26dc505518801773be4a1e0f0d5b6760c96c9720eeae9c` |
+| `config-reconciler.go` | `c31d7d3e1acfdd42adbbdad2ad2f9d17418911d8dcf7087f6dde31456415a75a` |
+| `health-proxy.go` | `ccd459062c3b7e2c36790a85971aa40ab559cb59a98fb9b7c707436029571e1c` |
+
+R2 passed 15/15 Python/static tests, separate Go vet for both main packages,
+the complete prior/current/prior/current suite, and isolated rollback-target
+suite. Both modes passed malicious wrapper-field drift normalization with
+`/proc/net/tcp` proving no wildcard `:8317`, every strict-parser ambiguity
+case, allowlisted setting checksum persistence, key rotation/old-key
+invalidation, child failure/restart, and zero owned Docker residue. Full peaked
+at 18.38 MiB/0% CPU; rollback-target peaked at 17.69 MiB/0% CPU.
+
 ## Initial pins
 
 - CLIProxyAPI stable release: `v7.2.141`.
@@ -51,9 +90,9 @@ provider-access, uptime, or future-version guarantees.
 - Exact upstream runtime manifest.
 - Exact Management Center release asset plus Dockerfile `ADD --checksum`.
 
-The final image contains the upstream runtime, statically built health proxy,
-pinned panel, entrypoint, and UID/GID `10001`. Product-kit files and tests are
-excluded by `.dockerignore`.
+The final image contains the upstream runtime, statically built health proxy
+and config reconciler, pinned panel, entrypoint, and UID/GID `10001`.
+Product-kit files and tests are excluded by `.dockerignore`.
 
 ## Local verification
 
@@ -71,8 +110,20 @@ and repeats its auth/state/UI/restart/failure/resource gates without touching
 the outgoing image. Every container run cleans all local objects through a
 trap; verify zero matching containers, images, networks, and volumes after each.
 
+The reproducible package manifest algorithm is:
+
+```sh
+find . -type f -not -path './.git/*' -print0 \
+  | LC_ALL=C sort -z \
+  | xargs -0 shasum -a 256 \
+  | shasum -a 256
+```
+
+It hashes file bytes plus sorted package-relative paths. Run from the package
+root; do not substitute the earlier filename-only digest method.
+
 Promotion and rollback also validate that `SOURCE_SHA256SUMS` has exactly the
-three ordered records, that its pre-change Dockerfile hash is current, and that
+four ordered records, that its pre-change Dockerfile hash is current, and that
 the post-change hash verifies. Dockerfile, release state, and checksum content
 are fully prepared before per-file atomic replacement. This is not a
 cross-file transaction: caught errors restore originals, but a hard

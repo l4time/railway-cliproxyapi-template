@@ -1,7 +1,9 @@
 # CLIProxyAPI Template Packaging Inventory
 
-Status: builder complete; independent QA, external repository, draft,
-publication, consumer smoke, cleanup, and monitoring remain separate gates.
+Status: published package under narrow management-persistence correction.
+Correction builder and local regression are complete; independent correction
+QA, exact repository sync, fresh public consumer smoke, and monitoring intake
+remain separate gates.
 
 ## Package
 
@@ -34,7 +36,7 @@ connection, Railway token, GitHub token, or runtime updater variable exists.
 
 | Surface | File(s) | Builder status |
 |---|---|---|
-| Runtime | `Dockerfile`, `entrypoint.sh`, `health-proxy.go`, `.dockerignore` | Entrypoint/health exact; Dockerfile builder digest pin is reproducibility-only and re-proved |
+| Runtime | `Dockerfile`, `entrypoint.sh`, `config-reconciler.go`, `health-proxy.go`, `.dockerignore` | Persistence R2 reasserts canonical security fields, uses a strict grammar/allowlist, and corrects the health default; full re-proof required |
 | Railway config | `railway.json`, contract | Complete |
 | Release automation | workflow, controller, state, `SOURCE_SHA256SUMS` | Complete; transactional checksum refresh, external only |
 | Tests | `tests/run.sh`, container/static/controller tests | Complete |
@@ -71,13 +73,13 @@ Other owner:
 | Local preflight / corrected Railway R2 | Passed; exact refs in build notes |
 | Build approval | Passed by canonical work order |
 | Builder package | Complete |
-| Builder local regression | Final correction PASS: 14/14 static; full forward Docker suite; prior target-only rollback suite retained; cleanup zero after every run |
-| Independent QA | Pending |
-| Public repository | Pending |
-| Draft / draft smoke | Pending |
-| Publish approval / publication | Pending |
-| Clean public consumer smoke | Pending |
-| Cleanup / monitoring intake | Pending |
+| Builder local regression | Persistence R2 PASS: static 15/15; separate Go vets; full forward and isolated rollback-target; strict parser, malicious drift/no-wildcard, allowlist, rotation, restart; zero owned residue |
+| Independent QA | Original package passed; persistence correction re-QA pending |
+| Public repository | Published at `db1f335d…`; exact correction sync pending |
+| Draft / draft smoke | Historical PASS; no replacement draft authorized by this builder |
+| Publish approval / publication | Published; correction remains blocked from acceptance |
+| Clean public consumer smoke | Latest FAIL isolated to now-corrected management persistence; fresh retest pending |
+| Cleanup / monitoring intake | All failed-smoke resources deleted; monitoring acceptance pending corrected smoke |
 
 ## Known limits
 
@@ -86,10 +88,16 @@ Other owner:
 - No per-user RBAC, tenant isolation, abuse controls, cost/provider guarantees,
   HA, or Serverless support.
 - Management Center updates are manual and separately reviewed.
+- Persistent `/data/state/config.yaml` contains both template credentials; all
+  backups are credential backups, and restored stale keys are reconciled from
+  the current Railway variables at boot.
+- Only `debug`, `request-retry`, `max-retry-credentials`, and
+  `max-retry-interval` persist as user-managed non-secret settings. Wrapper
+  security/topology is canonical and cannot be overridden by persisted YAML.
 - Release automation commits a tested source pin; consumer update inheritance
   remains unclaimed until clean public evidence.
 - Automated promotion is forward-only; emergency rollback validates only the
   retained target and does not prove arbitrary historical downgrades.
-- Release mutation requires an exact, current three-record source checksum
+- Release mutation requires an exact, current four-record source checksum
   manifest; malformed/missing/stale checksum state fails closed.
 - Asset exception remains subject to QA and publish approval.

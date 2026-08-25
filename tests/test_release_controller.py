@@ -29,7 +29,8 @@ def write_source_sums(path: Path, dockerfile: Path) -> None:
     path.write_text(
         f"{hashlib.sha256(dockerfile.read_bytes()).hexdigest()}  Dockerfile\n"
         f"{'a' * 64}  entrypoint.sh\n"
-        f"{'b' * 64}  health-proxy.go\n",
+        f"{'b' * 64}  config-reconciler.go\n"
+        f"{'c' * 64}  health-proxy.go\n",
         encoding="utf-8",
     )
 
@@ -204,8 +205,10 @@ class ReleaseControllerTests(unittest.TestCase):
 
     def test_missing_or_malformed_source_checksum_fails_without_changes(self) -> None:
         malformed_sources = (
-            f"{'a' * 64} entrypoint.sh\n{'b' * 64}  health-proxy.go\n",
-            f"{'a' * 64}  entrypoint.sh\n{'b' * 64}  health-proxy.go\n",
+            f"{'a' * 64} entrypoint.sh\n{'b' * 64}  config-reconciler.go\n"
+            f"{'c' * 64}  health-proxy.go\n",
+            f"{'a' * 64}  entrypoint.sh\n{'b' * 64}  config-reconciler.go\n"
+            f"{'c' * 64}  health-proxy.go\n",
         )
         for malformed in malformed_sources:
             with self.subTest(source=malformed), tempfile.TemporaryDirectory() as temp:

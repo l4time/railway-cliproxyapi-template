@@ -64,7 +64,16 @@ operations remain management-key protected.
 
 ## Persistence
 
-App-owned state is `/data/auth`, `/data/home`, and `/data/state`.
+App-owned state is `/data/auth`, `/data/home`, and `/data/state`. The Management
+API configuration is the protected regular file `/data/state/config.yaml`
+(UID/GID `10001`, mode `0600`, single link). Boot preserves non-secret
+allowlist fields `debug`, `request-retry`, `max-retry-credentials`, and
+`max-retry-interval` and atomically reconciles the two current
+Railway-generated keys. It always renders host `127.0.0.1`, port `8317`, TLS
+off, remote management on, panel enabled with self-update off, `/data/auth`,
+file logging/statistics off, and WebSocket auth on. Unsafe ownership, mode,
+symlink/path shape, ambiguity, unknown fields, or malformed/duplicate/reordered
+credential structure fails closed.
 `/data/lost+found` may exist as root-owned ext4 metadata and is excluded from
 app ownership and backups without being deleted or permission-weakened.
 

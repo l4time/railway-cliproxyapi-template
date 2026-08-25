@@ -5,7 +5,8 @@ APP_UID=10001
 APP_GID=10001
 DATA_DIR=/data
 RUN_DIR=/run/cliproxy
-CONFIG_FILE="${RUN_DIR}/config.yaml"
+STATE_DIR="${DATA_DIR}/state"
+CONFIG_FILE="${STATE_DIR}/config.yaml"
 
 fail() {
   printf '%s\n' "secure initialization failed" >&2
@@ -23,6 +24,7 @@ valid_key() {
 
 [ "$(id -u)" -eq 0 ] || fail
 [ -d "$DATA_DIR" ] || fail
+[ ! -L "$DATA_DIR" ] || fail
 case "$(stat -c '%u:%g:%a' "$DATA_DIR")" in
   0:0:755|10001:10001:750) ;;
   *) fail ;;
@@ -34,32 +36,21 @@ valid_key "$proxy_key" || fail
 valid_key "$management_key" || fail
 [ "$proxy_key" != "$management_key" ] || fail
 
+for path in "$DATA_DIR/auth" "$DATA_DIR/home" "$STATE_DIR"; do
+  [ ! -L "$path" ] || fail
+  [ ! -e "$path" ] || [ -d "$path" ] || fail
+  if [ -e "$path" ]; then
+    [ "$(stat -c '%u:%g:%a' "$path")" = "10001:10001:700" ] || fail
+  fi
+done
+
 install -d -m 0700 -o "$APP_UID" -g "$APP_GID" \
-  "$DATA_DIR/auth" "$DATA_DIR/home" "$DATA_DIR/state"
+  "$DATA_DIR/auth" "$DATA_DIR/home" "$STATE_DIR"
 chown "$APP_UID:$APP_GID" "$DATA_DIR"
 chmod 0750 "$DATA_DIR"
 
 install -d -m 0700 -o "$APP_UID" -g "$APP_GID" "$RUN_DIR"
-umask 077
-{
-  printf '%s\n' 'host: "127.0.0.1"'
-  printf '%s\n' 'port: 8317'
-  printf '%s\n' 'tls:'
-  printf '%s\n' '  enable: false'
-  printf '%s\n' 'remote-management:'
-  printf '%s\n' '  allow-remote: true'
-  printf '  secret-key: "%s"\n' "$management_key"
-  printf '%s\n' '  disable-control-panel: false'
-  printf '%s\n' '  disable-auto-update-panel: true'
-  printf '%s\n' 'auth-dir: "/data/auth"'
-  printf '%s\n' 'api-keys:'
-  printf '  - "%s"\n' "$proxy_key"
-  printf '%s\n' 'debug: false'
-  printf '%s\n' 'logging-to-file: false'
-  printf '%s\n' 'usage-statistics-enabled: false'
-} > "$CONFIG_FILE"
-chown "$APP_UID:$APP_GID" "$CONFIG_FILE"
-chmod 0600 "$CONFIG_FILE"
+/usr/local/bin/config-reconciler "$STATE_DIR" || fail
 
 unset proxy_key management_key CLIPROXY_PROXY_KEY CLIPROXY_MANAGEMENT_KEY
 export HOME="$DATA_DIR/home"

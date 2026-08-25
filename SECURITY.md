@@ -8,7 +8,8 @@ Report privately when a defect concerns:
   keys.
 - Public access to protected proxy or management routes.
 - Secret leakage through source, image history, process arguments/environment,
-  logs, health, tests, issues, assets, or release automation.
+  logs, health, persisted config, backups, tests, issues, assets, or release
+  automation.
 - A Management Center checksum/pin bypass or remote download fallback.
 - Incorrect loopback/public port, root-drop, `/data`, health, replica,
   Serverless, restart, update, or rollback wiring.
@@ -50,6 +51,13 @@ the proxy key does not invalidate provider-side credentials.
 - Railway HTTPS to rootless proxy `:8080`; CLIProxyAPI loopback only.
 - Pinned local Management Center; its updater disabled.
 - App/provider state only on one `/data` volume and one replica.
+- Protected management configuration at `/data/state/config.yaml`, owned by
+  UID/GID `10001`, mode `0600`, with fail-closed path checks and atomic
+  credential reconciliation at boot.
+- Canonical boot-time reassertion of loopback `127.0.0.1:8317`, TLS off,
+  authenticated remote management, pinned-panel controls, `/data/auth`,
+  file logging/statistics off, and WebSocket auth on. Persisted YAML cannot
+  override these wrapper-owned fields.
 - Serverless off and `ON_FAILURE` with a finite maximum of 10 retries.
 - External release controller without Railway/app/provider credentials.
 

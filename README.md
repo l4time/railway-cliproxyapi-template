@@ -46,9 +46,14 @@ Browser -- pinned /management.html --+--> Railway HTTPS :8080
 
 The root entrypoint performs only the narrow ownership/configuration bootstrap
 needed for a fresh Railway volume. It validates both keys, initializes the
-three app-owned directories, writes a mode-`0600` ephemeral config under
-`/run`, removes source keys from the child environment, and drops permanently
-to UID/GID `10001`. CLIProxyAPI is never bound directly to the public port.
+three app-owned directories, atomically initializes or reconciles the protected
+mode-`0600` config at `/data/state/config.yaml`, removes source keys from the
+child environment, and drops permanently to UID/GID `10001`. Existing
+`debug`, `request-retry`, `max-retry-credentials`, and `max-retry-interval`
+settings survive restart; the two Railway variables remain authoritative after
+key rotation. Every wrapper-owned network, TLS, management, panel, auth-path,
+logging, statistics, and WebSocket-auth baseline is reasserted on boot.
+CLIProxyAPI is never bound directly to the public port.
 
 ## Deploy
 
@@ -117,7 +122,8 @@ The volume boundary is `/data`:
 
 - `/data/auth`: provider authorization material and account files.
 - `/data/home`: the rootless runtime home.
-- `/data/state`: package-reserved persistent state.
+- `/data/state`: package-reserved persistent configuration, including the two
+  template access credentials in `/data/state/config.yaml`.
 
 Railway ext4 volumes may expose `/data/lost+found`. That directory is
 filesystem-maintenance metadata, may remain root-owned, and is not CLIProxyAPI
@@ -126,8 +132,9 @@ world-readable. The wrapper ignores it.
 
 ## Backup and restore
 
-Provider authorization files are sensitive credentials. Store every backup
-encrypted, restrict access, and apply the providers' security requirements.
+Provider authorization files and the persistent configuration are sensitive
+credentials. Store every backup encrypted, restrict access, and apply the
+providers' security requirements.
 
 1. Stop the service or otherwise ensure CLIProxyAPI is not writing.
 2. Archive the complete app-owned `/data/auth`, `/data/home`, and
@@ -145,7 +152,9 @@ encrypted, restrict access, and apply the providers' security requirements.
 
 A live file copy is not claimed to be consistent. Never attach the same volume
 to multiple replicas. If authorization material may have leaked, revoke it at
-the provider and reauthorize rather than trusting the archive.
+the provider and reauthorize rather than trusting the archive. If
+`/data/state/config.yaml` may have leaked, rotate both Railway template keys
+after restore; provider revocation is still separate.
 
 ## Release tracking, update, and rollback
 

@@ -5,10 +5,10 @@ remain unchecked.
 
 ## Source and image
 
-- [x] Corrected Dockerfile SHA-256 is `6fa6c77c…c6275c`; old
-  `cc534683…52c01e` changed only for immutable Go-builder provenance.
-- [x] Entrypoint SHA-256 is `39b3bd5d…b0c77`.
-- [x] Health proxy SHA-256 is `dbc811f7…c32`.
+- [x] Corrected Dockerfile, entrypoint, and config-reconciler SHA-256 values are
+  refreshed after the persistence correction.
+- [x] Health proxy and config-reconciler R2 hashes are refreshed after the
+  corrected persistent-config security proof.
 - [x] CLIProxyAPI current/prior pins are immutable index digests.
 - [x] Management Center `v1.22.6` uses `ADD --checksum`.
 - [x] No runtime `latest`, branch, provider credential, Railway token, or panel
@@ -52,6 +52,17 @@ remain unchecked.
 ## Persistence/recovery
 
 - [x] `/data/auth`, `/data/home`, `/data/state` ownership/modes tested.
+- [x] Protected config ownership/mode/single-link, malformed state, state/config
+  symlink, unsafe state directory, atomic temp cleanup, debug checksum-identical
+  restart, and generated-key rotation/old-key invalidation are deterministic.
+- [x] Wrapper-owned host/port/TLS/remote-management/panel/auth-dir/logging/
+  statistics/WebSocket-auth drift is reasserted; `/proc/net/tcp` proves no
+  wildcard `:8317`.
+- [x] Malformed credential prefixes, duplicate/reordered credential blocks,
+  inline/quoted ambiguity, anchors, aliases, tags, directives, multi-document
+  markers, unknown fields, wrong shapes, and key cardinality drift fail closed.
+- [x] Explicit user allowlist is limited to debug plus three bounded retry
+  fields and survives checksum-identically across restart and key rotation.
 - [x] Prior/current/prior/current and restart preserve a marker.
 - [x] Stopped encrypted backup and same-image restore path documented.
 - [x] `/data/lost+found` is identified as excluded ext4 metadata; no unsafe
@@ -96,8 +107,8 @@ remain unchecked.
 
 ## Builder local gates
 
-- [x] Final 37-file manifest and SHA-256 report captured.
-- [x] Final corrected Python unit/static tests pass: 14/14.
+- [x] Final 38-file manifest and SHA-256 report captured.
+- [x] Final corrected Python unit/static tests pass: 15/15.
 - [x] JSON and YAML parse.
 - [x] Shell syntax passes; optional shell/action/Docker linters were unavailable.
 - [x] Corrected full forward-transition Docker suite passes.
@@ -107,14 +118,16 @@ remain unchecked.
 ## External lifecycle
 
 - [ ] Independent QA has zero blockers.
-- [ ] Public repository/support/security routes work.
-- [ ] Railway draft config/variables/icon/overview inspected.
-- [ ] Clean unpublished-draft smoke passes.
-- [ ] Publish Approval Packet approved.
-- [ ] Public listing/search/deploy button work.
+- [x] Public repository/support/security routes work at the pre-correction
+  accepted commit; correction sync remains separate.
+- [x] Railway draft config/variables/icon/overview inspected.
+- [x] Clean unpublished-draft smoke passed before publication.
+- [x] Publish Approval Packet approved and publication completed.
+- [x] Public listing/search/deploy button work.
 - [ ] Clean public consumer smoke passes complete contract and update-policy
   serialization.
-- [ ] All disposable resources deleted immediately.
+- [x] All disposable resources from completed/failed smokes were deleted
+  immediately.
 - [ ] Product-kit, registry, monitoring, support, metrics, and review rows close.
 
 ## Hard blockers

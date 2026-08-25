@@ -12,6 +12,7 @@ STATE_FILE=${STATE_FILE:-release-state.json}
 PREFIX=cliproxy-template-test
 NETWORK="${PREFIX}-net"
 VOLUME="${PREFIX}-data"
+BAD_VOLUME="${PREFIX}-bad-data"
 CURRENT_IMAGE="${PREFIX}:current"
 OLD_IMAGE="${PREFIX}:prior"
 CONTAINER="${PREFIX}-app"
@@ -24,6 +25,7 @@ cleanup() {
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
   docker network rm "$NETWORK" >/dev/null 2>&1 || true
   docker volume rm "$VOLUME" >/dev/null 2>&1 || true
+  docker volume rm "$BAD_VOLUME" >/dev/null 2>&1 || true
   docker image rm "$CURRENT_IMAGE" "$OLD_IMAGE" >/dev/null 2>&1 || true
   rm -f "$PROXY_KEY_FILE" "$MANAGEMENT_KEY_FILE" "$LOG_FILE"
 }
@@ -126,8 +128,10 @@ check_runtime() {
     test "$(stat -c "%u:%g:%a" /data/auth)" = "10001:10001:700"
     test "$(stat -c "%u:%g:%a" /data/home)" = "10001:10001:700"
     test "$(stat -c "%u:%g:%a" /data/state)" = "10001:10001:700"
+    test "$(stat -c "%u:%g:%a" /data/state/config.yaml)" = "10001:10001:600"
     test "$(stat -c "%u:%g:%a" /data/auth/preflight-marker)" = "10001:10001:600"
-    test "$(stat -c "%u:%g:%a" /run/cliproxy/config.yaml)" = "10001:10001:600"
+    test ! -e /run/cliproxy/config.yaml
+    test "$(find /data/state -maxdepth 1 -name ".config.yaml.tmp.*" -print -quit)" = ""
     test "$(find /data -xdev ! -user 10001 -print -quit)" = ""
   '
 
@@ -178,6 +182,117 @@ done
 expect_init_failure "$PROXY_KEY" "$PROXY_KEY"
 printf '%s\n' 'invalid and equal key matrix: PASS'
 
+reset_bad_volume() {
+  docker volume rm "$BAD_VOLUME" >/dev/null 2>&1 || true
+  docker volume create "$BAD_VOLUME" >/dev/null
+}
+
+expect_bad_state_failure() {
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker run --name "$CONTAINER" \
+    --read-only \
+    --tmpfs /run:rw,nosuid,nodev,noexec,size=8m,mode=0755 \
+    -e "CLIPROXY_PROXY_KEY=$PROXY_KEY" \
+    -e "CLIPROXY_MANAGEMENT_KEY=$MANAGEMENT_KEY" \
+    -v "${BAD_VOLUME}:/data" \
+    "$CURRENT_IMAGE" >/dev/null 2>&1 && return 1
+  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+}
+
+seed_canonical_bad_volume() {
+  reset_bad_volume
+  docker run --rm \
+    --entrypoint sh \
+    -e "CLIPROXY_PROXY_KEY=$PROXY_KEY" \
+    -e "CLIPROXY_MANAGEMENT_KEY=$MANAGEMENT_KEY" \
+    -v "${BAD_VOLUME}:/data" \
+    "$CURRENT_IMAGE" \
+    -c 'install -d -m 700 -o 10001 -g 10001 /data/state && /usr/local/bin/config-reconciler /data/state'
+}
+
+expect_mutated_config_failure() {
+  mutation=$1
+  seed_canonical_bad_volume
+  docker run --rm -v "${BAD_VOLUME}:/data" busybox sh -c "$mutation"
+  expect_bad_state_failure
+}
+
+reset_bad_volume
+docker run --rm -v "${BAD_VOLUME}:/data" busybox sh -c \
+  'ln -s /tmp /data/state'
+expect_bad_state_failure
+
+reset_bad_volume
+docker run --rm -v "${BAD_VOLUME}:/data" busybox sh -c \
+  'mkdir -p /data/state && chown 123:123 /data/state && chmod 700 /data/state'
+expect_bad_state_failure
+
+reset_bad_volume
+docker run --rm -v "${BAD_VOLUME}:/data" busybox sh -c \
+  'mkdir -p /data/state && chown 10001:10001 /data/state && chmod 755 /data/state'
+expect_bad_state_failure
+
+reset_bad_volume
+docker run --rm -v "${BAD_VOLUME}:/data" busybox sh -c \
+  'mkdir -p /data/state && chown 10001:10001 /data/state && chmod 700 /data/state && ln -s /data/auth/target /data/state/config.yaml'
+expect_bad_state_failure
+
+reset_bad_volume
+docker run --rm -v "${BAD_VOLUME}:/data" busybox sh -c \
+  'mkdir -p /data/state && chown 10001:10001 /data/state && chmod 700 /data/state && printf "not: [valid\n" > /data/state/config.yaml && chown 10001:10001 /data/state/config.yaml && chmod 600 /data/state/config.yaml'
+expect_bad_state_failure
+
+reset_bad_volume
+docker run --rm -v "${BAD_VOLUME}:/data" busybox sh -c \
+  'mkdir -p /data/state && chown 10001:10001 /data/state && chmod 700 /data/state && printf "remote-management:\n  secret-key: x\napi-keys:\n  - y\n" > /data/state/config.yaml && chmod 600 /data/state/config.yaml'
+expect_bad_state_failure
+
+reset_bad_volume
+docker run --rm -v "${BAD_VOLUME}:/data" busybox sh -c \
+  'mkdir -p /data/state && chown 10001:10001 /data/state && chmod 700 /data/state && printf "remote-management:\n  secret-key: x\napi-keys:\n  - y\n" > /data/state/config.yaml && chown 10001:10001 /data/state/config.yaml && chmod 644 /data/state/config.yaml'
+expect_bad_state_failure
+
+expect_mutated_config_failure \
+  "sed -i 's/  secret-key: .*/  secret-key:malformed/' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i 's/  - .*/  -malformed/' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i '/api-keys:/{N;s/api-keys:\\n  - .*/api-keys: [inline]/;}' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i 's/api-keys:/\"api-keys\":/' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i 's/debug: false/debug: false # ambiguous/' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i \"s/debug: false/debug: 'false'/\" /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i 's/api-keys:/api-keys: \\&keys/' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i 's/  - .*/  - *keys/' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i 's/api-keys:/api-keys: !credential-list/' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i '1i---' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i '1i%YAML 1.2' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "printf 'host: \"127.0.0.1\"\\n' >> /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i '/  secret-key:/a\\  secret-key: \"duplicate\"' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i '/  secret-key:/a\\  unknown-security-field: true' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i '/  - /a\\  - \"duplicate\"' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "awk '{ if (\$0 ~ /^  allow-remote:/) { saved=\$0; next } if (\$0 ~ /^  secret-key:/) { print; print saved; next } print }' /data/state/config.yaml > /data/state/swapped && mv /data/state/swapped /data/state/config.yaml && chown 10001:10001 /data/state/config.yaml && chmod 600 /data/state/config.yaml"
+expect_mutated_config_failure \
+  "awk '{ if (\$0 ~ /^auth-dir:/) { saved=\$0; next } if (\$0 ~ /^api-keys:/) { print; getline; print; print saved; next } print }' /data/state/config.yaml > /data/state/swapped && mv /data/state/swapped /data/state/config.yaml && chown 10001:10001 /data/state/config.yaml && chmod 600 /data/state/config.yaml"
+expect_mutated_config_failure \
+  "sed -i 's/tls:/tls: false/' /data/state/config.yaml"
+expect_mutated_config_failure \
+  "printf 'unknown-security-field: true\\n' >> /data/state/config.yaml"
+docker volume rm "$BAD_VOLUME" >/dev/null
+printf '%s\n' 'unsafe and ambiguous persistent-config matrix: PASS'
+
 docker run --rm -v "${VOLUME}:/data" busybox chmod 0777 /data
 expect_init_failure "$PROXY_KEY" "$MANAGEMENT_KEY"
 docker run --rm -v "${VOLUME}:/data" busybox chmod 0755 /data
@@ -186,7 +301,7 @@ expect_init_failure "$PROXY_KEY" "$MANAGEMENT_KEY"
 docker run --rm -v "${VOLUME}:/data" busybox sh -c 'chown 0:0 /data && chmod 0755 /data'
 printf '%s\n' 'unsafe volume matrix: PASS'
 
-docker run --rm -v "${VOLUME}:/data" busybox sh -c 'mkdir -p /data/auth && printf "%s\n" marker > /data/auth/preflight-marker && chown 10001:10001 /data/auth/preflight-marker && chmod 600 /data/auth/preflight-marker'
+docker run --rm -v "${VOLUME}:/data" busybox sh -c 'mkdir -p /data/auth && chown 10001:10001 /data/auth && chmod 700 /data/auth && printf "%s\n" marker > /data/auth/preflight-marker && chown 10001:10001 /data/auth/preflight-marker && chmod 600 /data/auth/preflight-marker'
 
 if [ "$MODE" = "rollback-target" ]; then
   TRANSITIONS="$CURRENT_IMAGE $CURRENT_IMAGE"
@@ -203,6 +318,86 @@ done
 if [ "$MODE" = "rollback-target" ]; then
   printf '%s\n' 'rollback target validated without booting outgoing current: PASS'
 fi
+
+docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+docker run --rm -v "${VOLUME}:/data" busybox sed -i \
+  -e 's/host: "127.0.0.1"/host: "0.0.0.0"/' \
+  -e 's/port: 8317/port: 9999/' \
+  -e 's/  enable: false/  enable: true/' \
+  -e 's/  allow-remote: true/  allow-remote: false/' \
+  -e 's/  disable-control-panel: false/  disable-control-panel: true/' \
+  -e 's/  disable-auto-update-panel: true/  disable-auto-update-panel: false/' \
+  -e 's#auth-dir: "/data/auth"#auth-dir: "/tmp"#' \
+  -e 's/logging-to-file: false/logging-to-file: true/' \
+  -e 's/usage-statistics-enabled: false/usage-statistics-enabled: true/' \
+  -e 's/ws-auth: true/ws-auth: false/' \
+  /data/state/config.yaml
+start_app "$CURRENT_IMAGE"
+check_runtime
+docker exec "$CONTAINER" sh -c '
+  grep -Fx "host: \"127.0.0.1\"" /data/state/config.yaml >/dev/null
+  grep -Fx "port: 8317" /data/state/config.yaml >/dev/null
+  grep -Fx "  enable: false" /data/state/config.yaml >/dev/null
+  grep -Fx "  allow-remote: true" /data/state/config.yaml >/dev/null
+  grep -Fx "  disable-control-panel: false" /data/state/config.yaml >/dev/null
+  grep -Fx "  disable-auto-update-panel: true" /data/state/config.yaml >/dev/null
+  grep -Fx "auth-dir: \"/data/auth\"" /data/state/config.yaml >/dev/null
+  grep -Fx "logging-to-file: false" /data/state/config.yaml >/dev/null
+  grep -Fx "usage-statistics-enabled: false" /data/state/config.yaml >/dev/null
+  grep -Fx "ws-auth: true" /data/state/config.yaml >/dev/null
+  grep -q "0100007F:207D" /proc/net/tcp
+  ! grep -q "00000000:207D" /proc/net/tcp
+'
+printf '%s\n' 'wrapper-owned security and loopback reassertion: PASS'
+
+assert_status 200 \
+  -X PUT \
+  -H "Authorization: Bearer ${MANAGEMENT_KEY}" \
+  -H "Content-Type: application/json" \
+  --data '{"value":true}' \
+  "http://127.0.0.1:${PORT}/v0/management/debug"
+for setting in request-retry max-retry-credentials max-retry-interval; do
+  assert_status 200 \
+    -X PUT \
+    -H "Authorization: Bearer ${MANAGEMENT_KEY}" \
+    -H "Content-Type: application/json" \
+    --data '{"value":3}' \
+    "http://127.0.0.1:${PORT}/v0/management/${setting}"
+done
+[ "$(curl -fsS -H "Authorization: Bearer ${MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/debug")" = '{"debug":true}' ]
+CONFIG_CHECKSUM=$(curl -fsS -H "Authorization: Bearer ${MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/config" | sha256sum | cut -d' ' -f1)
+docker restart "$CONTAINER" >/dev/null
+wait_health
+[ "$(curl -fsS -H "Authorization: Bearer ${MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/debug")" = '{"debug":true}' ]
+for setting in request-retry max-retry-credentials max-retry-interval; do
+  [ "$(curl -fsS -H "Authorization: Bearer ${MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/${setting}")" = "{\"${setting}\":3}" ]
+done
+[ "$(curl -fsS -H "Authorization: Bearer ${MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/config" | sha256sum | cut -d' ' -f1)" = "$CONFIG_CHECKSUM" ]
+printf '%s\n' 'management config checksum-identical restart persistence: PASS'
+
+OLD_PROXY_KEY=$PROXY_KEY
+OLD_MANAGEMENT_KEY=$MANAGEMENT_KEY
+openssl rand -hex 32 > "$PROXY_KEY_FILE"
+openssl rand -hex 32 > "$MANAGEMENT_KEY_FILE"
+PROXY_KEY=$(cat "$PROXY_KEY_FILE")
+MANAGEMENT_KEY=$(cat "$MANAGEMENT_KEY_FILE")
+export CLIPROXY_PROXY_KEY="$PROXY_KEY"
+export CLIPROXY_MANAGEMENT_KEY="$MANAGEMENT_KEY"
+start_app "$CURRENT_IMAGE"
+check_runtime
+assert_status 401 -H "Authorization: Bearer ${OLD_PROXY_KEY}" "http://127.0.0.1:${PORT}/v1/models"
+assert_status 401 -H "Authorization: Bearer ${OLD_MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/config"
+[ "$(curl -fsS -H "Authorization: Bearer ${MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/debug")" = '{"debug":true}' ]
+for setting in request-retry max-retry-credentials max-retry-interval; do
+  [ "$(curl -fsS -H "Authorization: Bearer ${MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/${setting}")" = "{\"${setting}\":3}" ]
+done
+ROTATED_CHECKSUM=$(curl -fsS -H "Authorization: Bearer ${MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/config" | sha256sum | cut -d' ' -f1)
+docker restart "$CONTAINER" >/dev/null
+wait_health
+[ "$(curl -fsS -H "Authorization: Bearer ${MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/config" | sha256sum | cut -d' ' -f1)" = "$ROTATED_CHECKSUM" ]
+[ "$(curl -fsS -H "Authorization: Bearer ${MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/debug")" = '{"debug":true}' ]
+unset OLD_PROXY_KEY OLD_MANAGEMENT_KEY CONFIG_CHECKSUM ROTATED_CHECKSUM
+printf '%s\n' 'generated-key rotation and old-key invalidation: PASS'
 
 child_pid=$(docker exec "$CONTAINER" sh -c 'for p in /proc/[0-9]*; do read comm < "$p/comm" 2>/dev/null || continue; if [ "$comm" = CLIProxyAPI ]; then printf "%s\n" "${p#/proc/}"; break; fi; done')
 [ -n "$child_pid" ]

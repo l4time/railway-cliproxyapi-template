@@ -28,10 +28,15 @@ PIN = re.compile(
     r"^ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@sha256:[0-9a-f]{64}$",
     re.MULTILINE,
 )
-SOURCE_FILES = ("Dockerfile", "entrypoint.sh", "health-proxy.go")
+SOURCE_FILES = (
+    "Dockerfile",
+    "entrypoint.sh",
+    "config-reconciler.go",
+    "health-proxy.go",
+)
 SOURCE_LINE = re.compile(
     r"^(?P<digest>[0-9a-f]{64})  "
-    r"(?P<name>Dockerfile|entrypoint\.sh|health-proxy\.go)$"
+    r"(?P<name>Dockerfile|entrypoint\.sh|config-reconciler\.go|health-proxy\.go)$"
 )
 
 
@@ -146,7 +151,9 @@ def write_pin(dockerfile: Path, digest: str) -> None:
 def parse_source_sums(source: str) -> dict[str, str]:
     lines = source.splitlines()
     if len(lines) != len(SOURCE_FILES):
-        raise ValueError("SOURCE_SHA256SUMS must contain exactly three records")
+        raise ValueError(
+            f"SOURCE_SHA256SUMS must contain exactly {len(SOURCE_FILES)} records"
+        )
     parsed: dict[str, str] = {}
     for line in lines:
         match = SOURCE_LINE.fullmatch(line)

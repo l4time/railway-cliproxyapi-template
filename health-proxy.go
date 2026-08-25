@@ -20,7 +20,7 @@ func main() {
 	listen := flag.String("listen", "0.0.0.0:8080", "public listen address")
 	upstream := flag.String("upstream", "127.0.0.1:8317", "private upstream address")
 	binary := flag.String("binary", "/CLIProxyAPI/CLIProxyAPI", "upstream binary")
-	config := flag.String("config", "/run/cliproxy/config.yaml", "upstream config")
+	config := flag.String("config", "/data/state/config.yaml", "upstream config")
 	flag.Parse()
 
 	cmd := exec.Command(*binary, "-config", *config)
