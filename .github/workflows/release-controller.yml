@@ -50,6 +50,13 @@ jobs:
           now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           if [[ "$OPERATION" == "rollback" ]]; then
             python3 scripts/release_controller.py rollback --now "$now"
+            echo "release-controller decision=rollback target=retained-prior"
+            {
+              echo "### Stable upstream release controller"
+              echo
+              echo "- Decision: \`rollback\`"
+              echo "- Target: retained prior digest"
+            } >> "$GITHUB_STEP_SUMMARY"
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "smoke_mode=rollback-target" >> "$GITHUB_OUTPUT"
             echo "summary=rollback to retained prior digest" >> "$GITHUB_OUTPUT"
@@ -78,11 +85,31 @@ jobs:
             --published-at "$published_at" \
             --now "$now")
           decision=$(jq -r .decision <<<"$result")
-          if [[ "$decision" != "promote" ]]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "summary=${decision}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          echo "release-controller decision=${decision} candidate=${tag} digest=${digest}"
+          {
+            echo "### Stable upstream release controller"
+            echo
+            echo "- Candidate: \`${tag}\`"
+            echo "- Digest: \`${digest}\`"
+            echo "- Decision: \`${decision}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$decision" in
+            promote)
+              ;;
+            defer:*|noop:*)
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "summary=${decision}" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+            reject:*)
+              echo "::error title=Release controller rejected candidate::${decision} ${tag}@${digest}"
+              exit 1
+              ;;
+            *)
+              echo "::error title=Release controller returned an unknown decision::${decision}"
+              exit 1
+              ;;
+          esac
 
           python3 scripts/release_controller.py promote \
             --tag "$tag" \
