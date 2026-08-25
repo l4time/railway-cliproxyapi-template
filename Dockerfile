@@ -3,6 +3,8 @@ FROM golang:1.25.5-bookworm@sha256:d9132cce84391efab786495288756d60e1da215b1f94e
 WORKDIR /src
 COPY health-proxy.go .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/health-proxy health-proxy.go
+COPY config-reconciler.go .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/config-reconciler config-reconciler.go
 
 FROM scratch AS management_asset
 ADD --checksum=sha256:e2643e0875e0024e5ff9ddf4569e4c58611ab0456aeb6fa6065ed3e6c2b721f4 \
@@ -13,9 +15,10 @@ ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@sha256:7f598ce64478a8a5f90ed76875e0e9b0e
 FROM ${UPSTREAM_IMAGE}
 
 COPY --from=health_proxy_builder /out/health-proxy /usr/local/bin/health-proxy
+COPY --from=health_proxy_builder /out/config-reconciler /usr/local/bin/config-reconciler
 COPY --from=management_asset /management.html /opt/cliproxy/management.html
 COPY entrypoint.sh /usr/local/bin/cliproxy-entrypoint
-RUN chmod 0755 /usr/local/bin/health-proxy /usr/local/bin/cliproxy-entrypoint \
+RUN chmod 0755 /usr/local/bin/health-proxy /usr/local/bin/config-reconciler /usr/local/bin/cliproxy-entrypoint \
     && chmod 0644 /opt/cliproxy/management.html \
     && groupadd --gid 10001 cliproxy \
     && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /data/home --shell /usr/sbin/nologin cliproxy
