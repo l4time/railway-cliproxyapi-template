@@ -50,7 +50,7 @@ the proxy key does not invalidate provider-side credentials.
 - Railway HTTPS to rootless proxy `:8080`; CLIProxyAPI loopback only.
 - Pinned local Management Center; its updater disabled.
 - App/provider state only on one `/data` volume and one replica.
-- Serverless off and one ON_FAILURE retry.
+- Serverless off and `ON_FAILURE` with a finite maximum of 10 retries.
 - External release controller without Railway/app/provider credentials.
 
 Changing these defaults is outside the proved template contract.
