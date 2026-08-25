@@ -154,6 +154,10 @@ class StaticContractTests(unittest.TestCase):
     def test_runtime_updater_is_private_bounded_and_rootless(self) -> None:
         source = (ROOT / "health-proxy.go").read_text()
         entrypoint = (ROOT / "entrypoint.sh").read_text()
+        run_script = (ROOT / "tests" / "run.sh").read_text()
+        runtime_fixture = (
+            ROOT / "tests" / "test_runtime_updates.sh"
+        ).read_text()
         for required in (
             "defaultInterval    = 6 * time.Hour",
             "maxJitter          = 30 * time.Minute",
@@ -173,6 +177,10 @@ class StaticContractTests(unittest.TestCase):
         self.assertIn('"$DATA_DIR/update"', entrypoint)
         self.assertIn("--no-new-privs", entrypoint)
         self.assertIn('--reuid="$APP_UID"', entrypoint)
+        self.assertIn("tests/test_runtime_updates.sh", run_script)
+        self.assertIn("-e CGO_ENABLED=0", runtime_fixture)
+        self.assertIn("ROOT=$(CDPATH='' cd --", runtime_fixture)
+        self.assertNotIn("\n! docker", runtime_fixture)
 
 
 if __name__ == "__main__":
