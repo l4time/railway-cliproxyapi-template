@@ -88,6 +88,17 @@ class StaticContractTests(unittest.TestCase):
         self.assertEqual(workflow.count('cron: "17 */6 * * *"'), 1)
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("default: check", workflow)
+        self.assertEqual(
+            workflow.count(
+                "actions/checkout@"
+                "3d3c42e5aac5ba805825da76410c181273ba90b1"
+            ),
+            1,
+        )
+        self.assertNotIn(
+            "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+            workflow,
+        )
         self.assertIn(
             "OPERATION: ${{ github.event.inputs.operation || 'check' }}",
             workflow,
