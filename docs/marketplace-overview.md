@@ -61,6 +61,6 @@ publication.
 ## Draft review
 
 Verify one service/domain/volume, exact pins, `/healthz`, `8080`, one replica,
-Serverless off, ON_FAILURE one retry, both distinct secret generators and
-descriptions, no prompts/defaults, no hidden service, correct overview copy,
-and working public support/security links.
+Serverless off, ON_FAILURE maximum 10 retries, both distinct secret generators
+and descriptions, no prompts/defaults, no hidden service, correct overview
+copy, and working public support/security links.
