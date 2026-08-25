@@ -12,10 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class StaticContractTests(unittest.TestCase):
-    def test_proven_runtime_sources_are_unchanged(self) -> None:
+    def test_runtime_source_hashes_match_accepted_correction(self) -> None:
         expected = {
-            "entrypoint.sh": "39b3bd5d7e262f490172282d207a7563601d566ae52c8ba1064bbecf0fab0c77",
-            "health-proxy.go": "dbc811f7b49110392ca3db0870a53fb939c0b51e86be576721a18549fb935c32",
+            "entrypoint.sh": "d6d686fd3b58a366bf26dc505518801773be4a1e0f0d5b6760c96c9720eeae9c",
+            "config-reconciler.go": "c31d7d3e1acfdd42adbbdad2ad2f9d17418911d8dcf7087f6dde31456415a75a",
+            "health-proxy.go": "ccd459062c3b7e2c36790a85971aa40ab559cb59a98fb9b7c707436029571e1c",
         }
         for name, digest in expected.items():
             actual = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
@@ -95,6 +96,29 @@ class StaticContractTests(unittest.TestCase):
         self.assertEqual(
             match.group(1), hashlib.sha256((ROOT / "Dockerfile").read_bytes()).hexdigest()
         )
+
+    def test_persistent_config_is_atomic_and_fail_closed(self) -> None:
+        entrypoint = (ROOT / "entrypoint.sh").read_text()
+        reconciler = (ROOT / "config-reconciler.go").read_text()
+        self.assertIn('CONFIG_FILE="${STATE_DIR}/config.yaml"', entrypoint)
+        self.assertNotIn('CONFIG_FILE="${RUN_DIR}/config.yaml"', entrypoint)
+        for required in (
+            "syscall.O_NOFOLLOW",
+            "syscall.O_EXCL",
+            "syscall.Renameat",
+            "syscall.Fsync",
+            "info.Nlink == 1",
+            "info.Mode&0777 == 0600",
+            "security field order drift",
+            "unknown config field",
+            "api key cardinality drift",
+            '"host: \\"127.0.0.1\\"',
+            '"ws-auth: true',
+        ):
+            self.assertIn(required, reconciler)
+        health_proxy = (ROOT / "health-proxy.go").read_text()
+        self.assertIn('"/data/state/config.yaml"', health_proxy)
+        self.assertNotIn('"/run/cliproxy/config.yaml"', health_proxy)
 
 
 if __name__ == "__main__":
