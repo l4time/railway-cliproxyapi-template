@@ -28,7 +28,7 @@ terms.
 There is no database, Redis, Bucket, worker, scheduler, provider account,
 provider token, shared credential, runtime updater, or Railway token in the
 application. Serverless is off, there is one replica, and failed processes get
-one automatic retry.
+at most 10 automatic retries under Railway's finite `ON_FAILURE` policy.
 
 ## Architecture
 
