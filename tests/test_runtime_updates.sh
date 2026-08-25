@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 PREFIX=cliproxy-runtime-r2
 IMAGE="${PREFIX}:fixture"
 CONTAINER="${PREFIX}-app"
@@ -36,6 +36,7 @@ esac
 build_candidate() {
   tag=$1
   docker run --rm \
+    -e CGO_ENABLED=0 \
     -v "$ROOT/tests/fake_candidate.go:/src/fake_candidate.go:ro" \
     -v "$FIXTURE_ROOT:/out" \
     -w /src \
@@ -165,7 +166,10 @@ force_overdue
 start_app normal
 wait_health
 wait_failure_class transient
-! docker exec "$CONTAINER" grep -F 'v7.2.144@' /data/update/ledger.json >/dev/null
+if docker exec "$CONTAINER" grep -F 'v7.2.144@' /data/update/ledger.json >/dev/null; then
+  printf '%s\n' 'transient acquisition was incorrectly quarantined' >&2
+  exit 1
+fi
 printf '%s\n' 'transient acquisition remains retryable: PASS'
 
 set_scenario bad-checksum
@@ -221,7 +225,13 @@ docker exec "$CONTAINER" sh -c '
   test "$(awk "/^NoNewPrivs:/ {print \$2}" /proc/1/status)" = 1
   test "$(awk "/^CapEff:/ {print \$2}" /proc/1/status)" = 0000000000000000
 '
-! docker logs "$CONTAINER" 2>&1 | grep -F "$PROXY_KEY" >/dev/null
-! docker logs "$CONTAINER" 2>&1 | grep -F "$MANAGEMENT_KEY" >/dev/null
+if docker logs "$CONTAINER" 2>&1 | grep -F "$PROXY_KEY" >/dev/null; then
+  printf '%s\n' 'proxy key leaked to runtime logs' >&2
+  exit 1
+fi
+if docker logs "$CONTAINER" 2>&1 | grep -F "$MANAGEMENT_KEY" >/dev/null; then
+  printf '%s\n' 'management key leaked to runtime logs' >&2
+  exit 1
+fi
 docker stats --no-stream --format 'runtime updater fixture resources: {{.MemUsage}} | {{.CPUPerc}}' "$CONTAINER"
 printf '%s\n' 'ALL RUNTIME UPDATE FIXTURE GATES: PASS'
