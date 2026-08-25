@@ -19,7 +19,8 @@ remain unchecked.
 ## Railway contract
 
 - [x] One service, one domain on `8080`, one `/data`, one replica.
-- [x] `/healthz`, 60-second timeout, ON_FAILURE once, Serverless off.
+- [x] `/healthz`, 60-second timeout, ON_FAILURE maximum 10 retries,
+  Serverless off.
 - [x] No database, Redis, Bucket, worker, scheduler, TCP proxy, or second app.
 - [x] Upstream `8317` binds loopback only.
 - [ ] Draft editor matches with zero hidden resources/start overrides.

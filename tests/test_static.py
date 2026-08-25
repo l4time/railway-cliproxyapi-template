@@ -47,7 +47,7 @@ class StaticContractTests(unittest.TestCase):
         self.assertEqual(deploy["healthcheckPath"], "/healthz")
         self.assertEqual(deploy["numReplicas"], 1)
         self.assertEqual(deploy["restartPolicyType"], "ON_FAILURE")
-        self.assertEqual(deploy["restartPolicyMaxRetries"], 1)
+        self.assertEqual(deploy["restartPolicyMaxRetries"], 10)
         self.assertFalse(deploy["sleepApplication"])
 
     def test_docs_have_no_forbidden_product_claim(self) -> None:
