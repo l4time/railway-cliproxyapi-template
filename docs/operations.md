@@ -47,11 +47,13 @@ change usage.
 1. Use a disposable or approved recovery service with one fresh `/data`.
 2. Keep it stopped during restore.
 3. Restore the three app-owned trees without weakening modes or moving secrets
-   outside `/data/auth`.
+   outside `/data/auth` and `/data/state/config.yaml`.
 4. Start the same accepted image first.
 5. Verify health, key separation, panel checksum, provider state, and a
    non-sensitive request.
 6. Revoke and reauthorize any provider whose backup custody is uncertain.
+7. If config custody is uncertain, rotate both Railway template keys and prove
+   that each old key returns `401`.
 
 This package does not claim an online copy is consistent or that Railway
 volume replacement is atomic.
@@ -62,9 +64,13 @@ Rotate one layer at a time:
 
 1. Save a stopped encrypted backup.
 2. Change either proxy or management variable.
-3. Redeploy and verify the new value succeeds and the old value fails.
-4. Update trusted clients/secret manager.
-5. Rotate provider authorization separately at the provider.
+3. Redeploy. Boot atomically reconciles that variable into the persistent
+   config while preserving the explicit non-secret allowlist: `debug`,
+   `request-retry`, `max-retry-credentials`, and `max-retry-interval`.
+4. Verify the new value succeeds, the old value fails, and a non-secret
+   management setting still survives restart.
+5. Update trusted clients/secret manager.
+6. Rotate provider authorization separately at the provider.
 
 ## Update
 
@@ -94,7 +100,8 @@ revoke/re-authorize provider access if necessary.
 
 | Symptom | Safe response |
 |---|---|
-| `secure initialization failed` | Check two distinct generated variables and `/data` ownership; do not weaken validation |
+| `secure initialization failed` | Check two distinct generated variables plus exact `/data`/app-directory/config ownership and modes; reject symlinks or malformed config rather than weakening validation |
+| A non-allowlisted Management API setting resets | Expected wrapper policy; only debug and the three documented bounded retry fields persist |
 | Health `503` | Inspect bounded startup logs and loopback child status; do not expose port `8317` |
 | Proxy `401` | Use the proxy key as Bearer; do not substitute the management key |
 | Management `401` | Use the management key; confirm cross-key separation |
