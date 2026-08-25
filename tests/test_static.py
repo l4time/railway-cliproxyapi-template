@@ -81,10 +81,17 @@ class StaticContractTests(unittest.TestCase):
                 suspicious.search(path.read_text(errors="replace")), str(path)
             )
 
-    def test_workflow_isolates_rollback_target_and_gates_commit_on_success(self) -> None:
+    def test_workflow_keeps_unattended_cadence_and_gates_changes_on_success(self) -> None:
         workflow = (
             ROOT / ".github" / "workflows" / "release-controller.yml"
         ).read_text()
+        self.assertEqual(workflow.count('cron: "17 */6 * * *"'), 1)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("default: check", workflow)
+        self.assertIn(
+            "OPERATION: ${{ github.event.inputs.operation || 'check' }}",
+            workflow,
+        )
         self.assertIn("smoke_mode=rollback-target", workflow)
         self.assertIn(
             'tests/run.sh "${{ steps.prepare.outputs.smoke_mode }}"', workflow
