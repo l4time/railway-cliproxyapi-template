@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 MODE=${1:-full}
 case "$MODE" in
@@ -61,8 +61,14 @@ if [ "$MODE" = "full" ]; then
 fi
 for image in $IMAGES; do
   history=$(docker history --no-trunc "$image")
-  ! printf '%s' "$history" | grep -F "$PROXY_KEY" >/dev/null
-  ! printf '%s' "$history" | grep -F "$MANAGEMENT_KEY" >/dev/null
+  if printf '%s' "$history" | grep -F "$PROXY_KEY" >/dev/null; then
+    printf '%s\n' 'proxy key leaked into image history' >&2
+    exit 1
+  fi
+  if printf '%s' "$history" | grep -F "$MANAGEMENT_KEY" >/dev/null; then
+    printf '%s\n' 'management key leaked into image history' >&2
+    exit 1
+  fi
 done
 printf '%s\n' 'image-history secret absence: PASS'
 docker network create "$NETWORK" >/dev/null
@@ -167,9 +173,18 @@ check_runtime() {
   logs=$(docker logs "$CONTAINER" 2>&1)
   health=$(curl -fsS "http://127.0.0.1:${PORT}/healthz")
   printf '%s' "$argv$logs$health" > "$LOG_FILE"
-  ! grep -F "$PROXY_KEY" "$LOG_FILE" >/dev/null
-  ! grep -F "$MANAGEMENT_KEY" "$LOG_FILE" >/dev/null
-  ! printf '%s' "$logs" | grep -Eqi 'management.*(download|fallback)|control panel.*(download|fallback)'
+  if grep -F "$PROXY_KEY" "$LOG_FILE" >/dev/null; then
+    printf '%s\n' 'proxy key leaked into process/log/health evidence' >&2
+    return 1
+  fi
+  if grep -F "$MANAGEMENT_KEY" "$LOG_FILE" >/dev/null; then
+    printf '%s\n' 'management key leaked into process/log/health evidence' >&2
+    return 1
+  fi
+  if printf '%s' "$logs" | grep -Eqi 'management.*(download|fallback)|control panel.*(download|fallback)'; then
+    printf '%s\n' 'runtime attempted a forbidden management asset fallback' >&2
+    return 1
+  fi
   printf '%s\n' 'runtime auth/state/UI/security gates: PASS'
 }
 
