@@ -28,15 +28,20 @@ PIN = re.compile(
     r"^ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@sha256:[0-9a-f]{64}$",
     re.MULTILINE,
 )
+EMBEDDED_VERSION_PIN = re.compile(
+    r"^ARG EMBEDDED_VERSION=v[0-9]+\.[0-9]+\.[0-9]+$",
+    re.MULTILINE,
+)
 SOURCE_FILES = (
     "Dockerfile",
     "entrypoint.sh",
     "config-reconciler.go",
     "health-proxy.go",
+    "health-proxy_test.go",
 )
 SOURCE_LINE = re.compile(
     r"^(?P<digest>[0-9a-f]{64})  "
-    r"(?P<name>Dockerfile|entrypoint\.sh|config-reconciler\.go|health-proxy\.go)$"
+    r"(?P<name>Dockerfile|entrypoint\.sh|config-reconciler\.go|health-proxy\.go|health-proxy_test\.go)$"
 )
 
 
@@ -133,17 +138,26 @@ def load_state(path: Path) -> dict[str, Any]:
     return state
 
 
-def render_pin(source: str, digest: str) -> str:
+def render_pin(source: str, digest: str, tag: str) -> str:
+    if not STABLE_TAG.fullmatch(tag):
+        raise ValueError("invalid embedded version pin")
     replacement = f"ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@{digest}"
     updated, count = PIN.subn(replacement, source)
     if count != 2:
         raise ValueError(f"expected exactly two upstream pins, found {count}")
+    updated, version_count = EMBEDDED_VERSION_PIN.subn(
+        f"ARG EMBEDDED_VERSION={tag}", updated
+    )
+    if version_count != 1:
+        raise ValueError(
+            f"expected exactly one embedded version pin, found {version_count}"
+        )
     return updated
 
 
-def write_pin(dockerfile: Path, digest: str) -> None:
+def write_pin(dockerfile: Path, digest: str, tag: str) -> None:
     dockerfile.write_text(
-        render_pin(dockerfile.read_text(encoding="utf-8"), digest),
+        render_pin(dockerfile.read_text(encoding="utf-8"), digest, tag),
         encoding="utf-8",
     )
 
@@ -219,7 +233,9 @@ def write_release_files(
         state_path: state_path.read_text(encoding="utf-8"),
         source_sums: source_sums.read_text(encoding="utf-8"),
     }
-    updated_dockerfile = render_pin(originals[dockerfile], digest)
+    updated_dockerfile = render_pin(
+        originals[dockerfile], digest, state["current"]["tag"]
+    )
     updated_sums = render_source_sums(
         originals[source_sums],
         originals[dockerfile].encode(),

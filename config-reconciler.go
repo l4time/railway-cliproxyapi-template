@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unicode/utf8"
 )
 
@@ -48,6 +49,49 @@ func validKey(value string) bool {
 		}
 	}
 	return true
+}
+
+func readSecretFIFO(path string, uid, gid int) (string, error) {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeNamedPipe == 0 || info.Mode().Perm() != 0600 {
+		return "", errors.New("invalid secret handoff")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(stat.Uid) != uid || int(stat.Gid) != gid {
+		return "", errors.New("invalid secret handoff owner")
+	}
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return "", err
+	}
+	file := os.NewFile(uintptr(fd), path)
+	defer file.Close()
+	if err := os.Remove(path); err != nil {
+		return "", err
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	data := make([]byte, 0, 257)
+	buffer := make([]byte, 64)
+	for time.Now().Before(deadline) {
+		count, readErr := file.Read(buffer)
+		if count > 0 {
+			data = append(data, buffer[:count]...)
+			if len(data) > 256 {
+				return "", errors.New("secret handoff too large")
+			}
+			if bytes.Contains(data, []byte{'\n'}) {
+				break
+			}
+		}
+		if readErr != nil && !errors.Is(readErr, syscall.EAGAIN) && !errors.Is(readErr, io.EOF) {
+			return "", readErr
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(data) < 2 || data[len(data)-1] != '\n' || bytes.Count(data, []byte{'\n'}) != 1 {
+		return "", errors.New("incomplete secret handoff")
+	}
+	return string(data[:len(data)-1]), nil
 }
 
 func initialConfig(proxyKey, managementKey string) []byte {
@@ -495,16 +539,22 @@ func writeAtomic(dirFD, uid, gid int, content []byte) error {
 }
 
 func run() error {
-	if os.Geteuid() != 0 || len(os.Args) != 2 {
+	const uid, gid = 10001, 10001
+	if os.Geteuid() != uid || len(os.Args) != 4 {
 		return errors.New("invalid invocation")
 	}
-	proxyKey := os.Getenv("CLIPROXY_PROXY_KEY")
-	managementKey := os.Getenv("CLIPROXY_MANAGEMENT_KEY")
+	proxyKey, err := readSecretFIFO(os.Args[2], uid, gid)
+	if err != nil {
+		return err
+	}
+	managementKey, err := readSecretFIFO(os.Args[3], uid, gid)
+	if err != nil {
+		return err
+	}
 	if !validKey(proxyKey) || !validKey(managementKey) || proxyKey == managementKey {
 		return errors.New("invalid keys")
 	}
 
-	const uid, gid = 10001, 10001
 	dirFD, err := syscall.Open(
 		os.Args[1],
 		syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_DIRECTORY|syscall.O_NOFOLLOW,

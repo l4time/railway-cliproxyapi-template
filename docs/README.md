@@ -12,6 +12,8 @@
 - [Independent QA checklist](qa-checklist.md)
 
 The root [README](../README.md) is the non-expert deploy and first-run path.
-The contract and inventory are authoritative for draft/editor review. External
-publication, consumer smoke, and monitoring gates remain pending until recorded
-by the canonical portfolio dashboard.
+The contract and inventory are authoritative for draft/editor review.
+Independent R7 package QA and the combined Railway promotion/restart and
+bad-live rollback proofs are accepted. Repository/template synchronization and
+the clean public consumer smoke of that synchronized package remain separate
+external lifecycle gates owned by the canonical portfolio dashboard.

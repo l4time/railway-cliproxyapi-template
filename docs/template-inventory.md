@@ -1,15 +1,15 @@
 # CLIProxyAPI Template Packaging Inventory
 
-Status: published package under narrow management-persistence correction.
-Correction builder and local regression are complete; independent correction
-QA, exact repository sync, fresh public consumer smoke, and monitoring intake
-remain separate gates.
+Status: repository-ready 42-file Daily Auto-Update package. Independent R7 QA
+and the combined Railway promotion/restart and bad-live rollback proofs are
+accepted. Exact public repository/template synchronization and a clean consumer
+smoke of the synchronized package remain separate lifecycle gates.
 
 ## Package
 
 | Field | Answer |
 |---|---|
-| Candidate | CLIProxyAPI — Secure Release-Tracked |
+| Candidate | CLIProxyAPI — Daily Auto-Update |
 | Proposed code | `cliproxyapi-secure-release-tracked` |
 | Product-kit version | `2026-07-04-v1` |
 | Upstream | `router-for-me/CLIProxyAPI` `v7.2.141`, MIT |
@@ -30,23 +30,24 @@ remain separate gates.
 | `PORT` | Runtime/default | Railway target `8080`; no consumer input |
 
 No provider credential, subscription, account, shared secret, database
-connection, Railway token, GitHub token, or runtime updater variable exists.
+connection, Railway token, GitHub token, or runtime-updater variable exists.
+The built-in updater needs no consumer input or credential.
 
 ## Repository assets
 
 | Surface | File(s) | Builder status |
 |---|---|---|
-| Runtime | `Dockerfile`, `entrypoint.sh`, `config-reconciler.go`, `health-proxy.go`, `.dockerignore` | Persistence R2 reasserts canonical security fields, uses a strict grammar/allowlist, and corrects the health default; full re-proof required |
+| Runtime | `Dockerfile`, `entrypoint.sh`, `config-reconciler.go`, `health-proxy.go`, `.dockerignore` | Persistence R2 plus rootless supervisor, official stable-release verifier, private probe, cutover/rollback, bounded `/data/update` ledger |
 | Railway config | `railway.json`, contract | Complete |
-| Release automation | workflow, controller, state, `SOURCE_SHA256SUMS` | Complete; transactional checksum refresh, external only |
-| Tests | `tests/run.sh`, container/static/controller tests | Complete |
+| Release automation | runtime supervisor plus workflow, controller, state, `SOURCE_SHA256SUMS` | Runtime is the consumer mechanism; external controller remains embedded-fallback canary |
+| Tests | `health-proxy_test.go`, `tests/run.sh`, container/static/controller tests | Runtime unit/race/vet, static, recovery, adversarial updater, auth/state/UI and rollback suites PASS; independent R7 QA ACCEPT |
 | Deploy/user path | `README.md`, `overview.md`, environment guide | Complete |
 | Operations/security | operations, architecture/security, `SECURITY.md` | Complete |
-| Update/rollback | release-controller guide, changelog | Complete |
+| Update/rollback | runtime supervisor, operations, release-controller guide, changelog | Independent R7 QA ACCEPT; Railway Phase A promotion/restart and fresh-project bad-live rollback/quarantine PASS |
 | Support intake | issue form/routes, labels, CONTRIBUTING, CODEOWNERS | Complete |
 | Legal | `LICENSE`, `NOTICE.md`, `TRADEMARKS.md` | Complete |
-| Marketplace | marketplace overview, assets exception | Complete; exception pending QA |
-| Inventory/lifecycle | this file, completion packet, QA checklist | Builder complete; independent gates pending |
+| Marketplace | marketplace overview, assets exception | Complete; no-custom-asset exception accepted for the existing listing |
+| Inventory/lifecycle | this file, completion packet, QA checklist | Complete for the repository-ready 42-file package; public sync/smoke remain external |
 
 ## Support ownership
 
@@ -73,13 +74,14 @@ Other owner:
 | Local preflight / corrected Railway R2 | Passed; exact refs in build notes |
 | Build approval | Passed by canonical work order |
 | Builder package | Complete |
-| Builder local regression | Persistence R2 PASS: static 15/15; separate Go vets; full forward and isolated rollback-target; strict parser, malicious drift/no-wildcard, allowlist, rotation, restart; zero owned residue |
-| Independent QA | Original package passed; persistence correction re-QA pending |
-| Public repository | Published at `db1f335d…`; exact correction sync pending |
-| Draft / draft smoke | Historical PASS; no replacement draft authorized by this builder |
-| Publish approval / publication | Published; correction remains blocked from acceptance |
-| Clean public consumer smoke | Latest FAIL isolated to now-corrected management persistence; fresh retest pending |
-| Cleanup / monitoring intake | All failed-smoke resources deleted; monitoring acceptance pending corrected smoke |
+| Builder local regression | Current updater package PASS: static 16/16, Go race/vet, both architecture builds, auth/state/UI/restart/rollback and native updater fixtures; zero owned residue |
+| Independent QA | R7 exact digest `a5a25a49…` ACCEPT with zero P0-P3; native updater matrix peaked at 7.758 MiB |
+| Railway updater proof | Phase A PASS: overdue `v7.2.141 → v7.2.142` promotion and sole-service restart persistence. Fresh R3 PASS: bad-live `v7.2.143` live-semantic rejection, exact quarantine, and automatic healthy `v7.2.141` restore; sanitized logs/resources passed |
+| Public repository | Existing published source remains at `b9617b71…`; exact 42-file Daily Auto-Update sync is the next external gate |
+| Draft / draft smoke | Historical listing PASS; synchronized update draft review remains external |
+| Publish approval / publication | Existing template is published under stable code `cliproxyapi-secure-release-tracked`; source/metadata update remains external |
+| Clean public consumer smoke | Original protected-config package passed; synchronized Daily Auto-Update consumer smoke remains required |
+| Cleanup / monitoring intake | R1/R2/R3 disposable projects, domains, volumes, fixtures, captures and scheduled inventories are fully cleared; update monitoring intake follows synchronized smoke |
 
 ## Known limits
 
@@ -94,10 +96,16 @@ Other owner:
 - Only `debug`, `request-retry`, `max-retry-credentials`, and
   `max-retry-interval` persist as user-managed non-secret settings. Wrapper
   security/topology is canonical and cannot be overridden by persisted YAML.
-- Release automation commits a tested source pin; consumer update inheritance
-  remains unclaimed until clean public evidence.
+- Runtime update checks every 6 hours plus at most 30 minutes jitter and accepts
+  only newer stable exact semver after a 6-hour soak and
+  checksum/archive/private-probe/live-semantic gates. An overdue boot checks
+  immediately; a continuously running service attempts within every rolling
+  24 hours.
+- Rollback is binary-only against live protected state; irreversible upstream
+  state migration still requires an explicit stopped backup restore.
 - Automated promotion is forward-only; emergency rollback validates only the
   retained target and does not prove arbitrary historical downgrades.
-- Release mutation requires an exact, current four-record source checksum
+- Release mutation requires an exact, current five-record source checksum
   manifest; malformed/missing/stale checksum state fails closed.
-- Asset exception remains subject to QA and publish approval.
+- The accepted no-custom-asset exception applies to the current listing; any
+  future custom asset needs original provenance.

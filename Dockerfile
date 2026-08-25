@@ -1,8 +1,11 @@
 ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@sha256:7f598ce64478a8a5f90ed76875e0e9b0e7d77b80e17184b13df18c3d5bdb3def
 FROM golang:1.25.5-bookworm@sha256:d9132cce84391efab786495288756d60e1da215b1f94e87860aeefc3d4c45b6d AS health_proxy_builder
+ARG EMBEDDED_VERSION=v7.2.141
 WORKDIR /src
 COPY health-proxy.go .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/health-proxy health-proxy.go
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags="-s -w -X main.embeddedVersion=${EMBEDDED_VERSION}" \
+    -o /out/health-proxy health-proxy.go
 COPY config-reconciler.go .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/config-reconciler config-reconciler.go
 

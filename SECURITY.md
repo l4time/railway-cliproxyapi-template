@@ -13,8 +13,9 @@ Report privately when a defect concerns:
 - A Management Center checksum/pin bypass or remote download fallback.
 - Incorrect loopback/public port, root-drop, `/data`, health, replica,
   Serverless, restart, update, or rollback wiring.
-- Release-controller acceptance of a draft/prerelease, mutable/malformed
-  source, under-soak release, excess promotion, or failed smoke.
+- Runtime-updater or release-controller acceptance of a draft/prerelease,
+  mutable/malformed source, under-soak release, checksum/tag reuse, unsafe
+  archive, failed private probe, public updater surface, or failed rollback.
 - Misleading provider authorization, subscription, backup, recovery, or trust
   guidance controlled by this package.
 
@@ -59,6 +60,8 @@ the proxy key does not invalidate provider-side credentials.
   file logging/statistics off, and WebSocket auth on. Persisted YAML cannot
   override these wrapper-owned fields.
 - Serverless off and `ON_FAILURE` with a finite maximum of 10 retries.
-- External release controller without Railway/app/provider credentials.
+- Private runtime stable-release updater without Railway/GitHub/app/provider
+  credentials; protected ledger and binaries under `/data/update`.
+- External release controller remains build-time qualification/canary defense.
 
 Changing these defaults is outside the proved template contract.

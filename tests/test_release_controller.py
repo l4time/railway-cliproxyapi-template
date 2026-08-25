@@ -30,7 +30,8 @@ def write_source_sums(path: Path, dockerfile: Path) -> None:
         f"{hashlib.sha256(dockerfile.read_bytes()).hexdigest()}  Dockerfile\n"
         f"{'a' * 64}  entrypoint.sh\n"
         f"{'b' * 64}  config-reconciler.go\n"
-        f"{'c' * 64}  health-proxy.go\n",
+        f"{'c' * 64}  health-proxy.go\n"
+        f"{'d' * 64}  health-proxy_test.go\n",
         encoding="utf-8",
     )
 
@@ -126,12 +127,14 @@ class ReleaseControllerTests(unittest.TestCase):
             old = digest("1")
             dockerfile.write_text(
                 f"ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@{old}\n"
+                "ARG EMBEDDED_VERSION=v1.2.3\n"
                 "FROM scratch\n"
                 f"ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@{old}\n",
                 encoding="utf-8",
             )
-            controller.write_pin(dockerfile, digest("2"))
+            controller.write_pin(dockerfile, digest("2"), "v1.2.4")
             self.assertEqual(dockerfile.read_text().count(digest("2")), 2)
+            self.assertIn("ARG EMBEDDED_VERSION=v1.2.4", dockerfile.read_text())
 
     def test_rollback_swaps_current_and_prior(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -143,6 +146,7 @@ class ReleaseControllerTests(unittest.TestCase):
             current = self.state["current"]["digest"]
             dockerfile.write_text(
                 f"ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@{current}\n"
+                "ARG EMBEDDED_VERSION=v1.2.3\n"
                 "FROM scratch\n"
                 f"ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@{current}\n",
                 encoding="utf-8",
@@ -163,6 +167,7 @@ class ReleaseControllerTests(unittest.TestCase):
             self.assertEqual(result["current"]["tag"], "v1.2.2")
             self.assertEqual(result["prior"]["tag"], "v1.2.3")
             self.assertEqual(dockerfile.read_text().count(digest("0")), 2)
+            self.assertIn("ARG EMBEDDED_VERSION=v1.2.2", dockerfile.read_text())
             controller.verify_source_checksum(source_sums, dockerfile)
 
     def test_promote_refreshes_dockerfile_source_checksum(self) -> None:
@@ -176,6 +181,7 @@ class ReleaseControllerTests(unittest.TestCase):
             state_path.write_text(json.dumps(state), encoding="utf-8")
             dockerfile.write_text(
                 f"ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@{digest('1')}\n"
+                "ARG EMBEDDED_VERSION=v1.2.3\n"
                 "FROM scratch\n"
                 f"ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@{digest('1')}\n",
                 encoding="utf-8",
@@ -219,6 +225,7 @@ class ReleaseControllerTests(unittest.TestCase):
                 state_path.write_text(json.dumps(self.state), encoding="utf-8")
                 dockerfile.write_text(
                     f"ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@{digest('1')}\n"
+                    "ARG EMBEDDED_VERSION=v1.2.3\n"
                     "FROM scratch\n"
                     f"ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@{digest('1')}\n",
                     encoding="utf-8",
@@ -270,6 +277,7 @@ class ReleaseControllerTests(unittest.TestCase):
             state_path.write_text(json.dumps(state), encoding="utf-8")
             dockerfile.write_text(
                 f"ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@{digest('f')}\n"
+                "ARG EMBEDDED_VERSION=v7.2.141\n"
                 "FROM scratch\n"
                 f"ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@{digest('f')}\n",
                 encoding="utf-8",

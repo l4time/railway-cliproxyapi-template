@@ -1,5 +1,41 @@
 # Build and Proof Notes
 
+## Accepted Daily Auto-Update package
+
+The current repository-ready package contains exactly 42 files. Independent R7
+QA accepted canonical package digest
+`a5a25a4914f712b1d3bf50fa3535a9e6ddb792e9431978f29ad5eed19604fc23`
+with zero P0-P3 findings. The accepted runtime source hashes are:
+
+| Current file | SHA-256 |
+|---|---|
+| `Dockerfile` | `a1e373573469cd5154759fd33abba25bd89466f0881409fabbf93bfa1bf03429` |
+| `entrypoint.sh` | `17ffcd9287098351313ad9bfe659ff1e787a5f10bab14faf6897a824070cc1b1` |
+| `config-reconciler.go` | `6d5449e173a3102be5626acb5b3c569c29cc5e584071d62467d8242f7267aacc` |
+| `health-proxy.go` | `30834bb1d2d7ec934d828691bbe7f653e6ec160d578a480f9298346b5cdc4208` |
+| `health-proxy_test.go` | `8103ff627433d9abc3bb55e695245bbfc40f8521539cda712fe8afb4bc74f35c` |
+
+Static 16/16, Go race/vet, both pinned architectures, rootless/auth/config/UI/
+restart suites, updater adversarial fixtures, recovery phases, rollback fault
+routes, secret/log scans, and zero-residue checks passed. Independent native
+updater QA peaked at 7.758 MiB.
+
+Railway R2 Phase A observed an overdue boot check automatically promote the
+embedded `v7.2.141` to verified fixture `v7.2.142`, preserve auth/UI/config
+state, and retain the promoted binary across the sole Railway service restart.
+Because Railway retained a deleted-volume tombstone, the rollback question was
+executed in the authorized fresh R3 project instead of weakening isolation.
+R3 acquired and privately probed bad-live `v7.2.143`, rejected it during
+authenticated live semantic validation, quarantined the exact identity, and
+automatically restarted healthy embedded `v7.2.141`. Sanitized log and
+resource ceilings passed, and all R1/R2/R3 resources and scheduled inventories
+were permanently cleared.
+
+These fixtures prove the updater mechanics, not future upstream/provider state
+compatibility. Cutover and rollback are binary-only; live user state is never
+rewound, and an irreversible migration can require explicit stopped-backup
+restore.
+
 ## Accepted runtime source
 
 The initial package copies the corrected local/Railway R2 source exactly:
@@ -42,9 +78,9 @@ replaces and invalidates old proxy and management keys.
 
 This is an intentional runtime change. The table above is historical. R2 also
 updates the health proxy's standalone default from the stale `/run` path to
-`/data/state/config.yaml`. Final current hashes, exact 38-file inventory, full
-forward and rollback-target suites, and zero-residue audit replace the earlier
-runtime-source proof only after this correction passes.
+`/data/state/config.yaml`. This historical 38-file persistence package was
+later superseded by the accepted 42-file Daily Auto-Update package and hashes
+above.
 
 | Corrected runtime file | SHA-256 |
 |---|---|
@@ -123,7 +159,7 @@ It hashes file bytes plus sorted package-relative paths. Run from the package
 root; do not substitute the earlier filename-only digest method.
 
 Promotion and rollback also validate that `SOURCE_SHA256SUMS` has exactly the
-four ordered records, that its pre-change Dockerfile hash is current, and that
+five ordered records, that its pre-change Dockerfile hash is current, and that
 the post-change hash verifies. Dockerfile, release state, and checksum content
 are fully prepared before per-file atomic replacement. This is not a
 cross-file transaction: caught errors restore originals, but a hard
