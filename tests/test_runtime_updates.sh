@@ -10,8 +10,6 @@ PORT=18417
 SERVER_PORT=18419
 FIXTURE_ROOT=$(mktemp -d)
 SERVER_PID=
-HOST_UID=$(id -u)
-HOST_GID=$(id -g)
 PROXY_KEY=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 MANAGEMENT_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 
@@ -28,6 +26,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 cleanup
+mkdir -m 0700 "$FIXTURE_ROOT"
 
 case "$(docker info --format '{{.Architecture}}')" in
   arm64|aarch64) FIXTURE_ARCH=aarch64 ;;
@@ -38,19 +37,16 @@ esac
 build_candidate() {
   tag=$1
   docker run --rm \
-    --user "${HOST_UID}:${HOST_GID}" \
     -e CGO_ENABLED=0 \
     -e FIXTURE_TAG="$tag" \
-    -e HOME=/tmp/fixture-home \
-    -e GOCACHE=/tmp/fixture-gocache \
     -v "$ROOT/tests/fake_candidate.go:/src/fake_candidate.go:ro" \
-    -v "$FIXTURE_ROOT:/out" \
     -w /src \
     golang:1.25.5-bookworm \
     /bin/sh -eu -c \
-    'mkdir -p "$HOME" "$GOCACHE" &&
-      /usr/local/go/bin/go build -trimpath -ldflags="-s -w -X main.version=${FIXTURE_TAG}" -o /out/cli-proxy-api fake_candidate.go &&
-      chmod 0755 /out/cli-proxy-api'
+    '/usr/local/go/bin/go build -trimpath -ldflags="-s -w -X main.version=${FIXTURE_TAG}" -o /tmp/cli-proxy-api fake_candidate.go &&
+      chmod 0755 /tmp/cli-proxy-api &&
+      cat /tmp/cli-proxy-api' > "$FIXTURE_ROOT/cli-proxy-api"
+  chmod 0755 "$FIXTURE_ROOT/cli-proxy-api"
   COPYFILE_DISABLE=1 tar --format ustar -C "$FIXTURE_ROOT" -czf "$FIXTURE_ROOT/candidate.tar.gz" cli-proxy-api
   printf '%s\n' "$tag" > "$FIXTURE_ROOT/tag"
 }
@@ -132,12 +128,20 @@ wait_idle() {
 
 docker build -t "$IMAGE" "$ROOT" >/dev/null
 docker volume create "$VOLUME" >/dev/null
-# shellcheck disable=SC2016  # Deliberate literal command-substitution injection probe.
-build_candidate 'v0.0.0$(touch>/out/fixture-injection)'
-test ! -e "$FIXTURE_ROOT/fixture-injection"
+# shellcheck disable=SC2016  # Deliberate literal linker-value injection probe.
+INJECTION_TAG='v0.0.0$(touch>/tmp/fixture-injection)'
+build_candidate "$INJECTION_TAG"
+grep -aF "$INJECTION_TAG" "$FIXTURE_ROOT/cli-proxy-api" >/dev/null
+INJECTION_HASH=$(shasum -a 256 "$FIXTURE_ROOT/cli-proxy-api" | cut -d' ' -f1)
 printf '%s\n' 'fixture tag shell-injection boundary: PASS'
 build_candidate v7.2.142
+[ -x "$FIXTURE_ROOT/cli-proxy-api" ]
+[ "$(shasum -a 256 "$FIXTURE_ROOT/cli-proxy-api" | cut -d' ' -f1)" != "$INJECTION_HASH" ]
+[ "$(tar -tzf "$FIXTURE_ROOT/candidate.tar.gz")" = "cli-proxy-api" ]
+[ "$(cat "$FIXTURE_ROOT/tag")" = "v7.2.142" ]
 set_scenario good
+[ "$(cat "$FIXTURE_ROOT/scenario")" = "good" ]
+printf '%s\n' 'container-local build and repeated host-owned fixture writes: PASS'
 FIXTURE_ROOT="$FIXTURE_ROOT" FIXTURE_PORT="$SERVER_PORT" FIXTURE_ARCH="$FIXTURE_ARCH" \
   python3 "$ROOT/tests/fake_release_server.py" >"$FIXTURE_ROOT/server.log" 2>&1 &
 SERVER_PID=$!
