@@ -132,6 +132,7 @@ wait_idle() {
 
 docker build -t "$IMAGE" "$ROOT" >/dev/null
 docker volume create "$VOLUME" >/dev/null
+# shellcheck disable=SC2016  # Deliberate literal command-substitution injection probe.
 build_candidate 'v0.0.0$(touch>/out/fixture-injection)'
 test ! -e "$FIXTURE_ROOT/fixture-injection"
 printf '%s\n' 'fixture tag shell-injection boundary: PASS'
