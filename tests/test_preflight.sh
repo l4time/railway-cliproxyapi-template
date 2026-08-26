@@ -99,6 +99,35 @@ wait_health() {
   return 1
 }
 
+forbidden_management_asset_log() {
+  grep -Eqi \
+    'failed to fetch latest management release information|failed to download (fallback )?management (asset|control panel page)|management asset (downloaded from fallback URL|updated (successfully|from fallback page successfully))'
+}
+
+if printf '%s\n' \
+  'advanced current to newer build-qualified embedded fallback' \
+  'GET /v0/management/request-error-logs/:name --> internal/api/handlers/management.(*Handler).DownloadRequestErrorLog-fm' \
+  'GET /v0/management/auth-files/download --> internal/api/handlers/management.(*Handler).DownloadAuthFile-fm' |
+  forbidden_management_asset_log
+then
+  printf '%s\n' 'benign runtime log rejected as a management asset fallback' >&2
+  exit 1
+fi
+for forbidden_log in \
+  'failed to fetch latest management release information, trying fallback page' \
+  'failed to download management asset, trying fallback page' \
+  'failed to download fallback management control panel page' \
+  'management asset downloaded from fallback URL without digest verification' \
+  'management asset updated successfully' \
+  'management asset updated from fallback page successfully'
+do
+  if ! printf '%s\n' "$forbidden_log" | forbidden_management_asset_log; then
+    printf 'forbidden management asset log was not rejected: %s\n' "$forbidden_log" >&2
+    exit 1
+  fi
+done
+printf '%s\n' 'management asset log classifier regression: PASS'
+
 start_app() {
   image=$1
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
@@ -181,7 +210,7 @@ check_runtime() {
     printf '%s\n' 'management key leaked into process/log/health evidence' >&2
     return 1
   fi
-  if printf '%s' "$logs" | grep -Eqi 'management.*(download|fallback)|control panel.*(download|fallback)'; then
+  if printf '%s\n' "$logs" | forbidden_management_asset_log; then
     printf '%s\n' 'runtime attempted a forbidden management asset fallback' >&2
     return 1
   fi
