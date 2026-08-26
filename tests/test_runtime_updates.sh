@@ -10,6 +10,8 @@ PORT=18417
 SERVER_PORT=18419
 FIXTURE_ROOT=$(mktemp -d)
 SERVER_PID=
+HOST_UID=$(id -u)
+HOST_GID=$(id -g)
 PROXY_KEY=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 MANAGEMENT_KEY=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 
@@ -36,14 +38,19 @@ esac
 build_candidate() {
   tag=$1
   docker run --rm \
+    --user "${HOST_UID}:${HOST_GID}" \
     -e CGO_ENABLED=0 \
     -e FIXTURE_TAG="$tag" \
+    -e HOME=/tmp/fixture-home \
+    -e GOCACHE=/tmp/fixture-gocache \
     -v "$ROOT/tests/fake_candidate.go:/src/fake_candidate.go:ro" \
     -v "$FIXTURE_ROOT:/out" \
     -w /src \
     golang:1.25.5-bookworm \
     /bin/sh -eu -c \
-    '/usr/local/go/bin/go build -trimpath -ldflags="-s -w -X main.version=${FIXTURE_TAG}" -o /out/cli-proxy-api fake_candidate.go && chmod 0755 /out/cli-proxy-api'
+    'mkdir -p "$HOME" "$GOCACHE" &&
+      /usr/local/go/bin/go build -trimpath -ldflags="-s -w -X main.version=${FIXTURE_TAG}" -o /out/cli-proxy-api fake_candidate.go &&
+      chmod 0755 /out/cli-proxy-api'
   COPYFILE_DISABLE=1 tar --format ustar -C "$FIXTURE_ROOT" -czf "$FIXTURE_ROOT/candidate.tar.gz" cli-proxy-api
   printf '%s\n' "$tag" > "$FIXTURE_ROOT/tag"
 }
@@ -125,6 +132,9 @@ wait_idle() {
 
 docker build -t "$IMAGE" "$ROOT" >/dev/null
 docker volume create "$VOLUME" >/dev/null
+build_candidate 'v0.0.0$(touch>/out/fixture-injection)'
+test ! -e "$FIXTURE_ROOT/fixture-injection"
+printf '%s\n' 'fixture tag shell-injection boundary: PASS'
 build_candidate v7.2.142
 set_scenario good
 FIXTURE_ROOT="$FIXTURE_ROOT" FIXTURE_PORT="$SERVER_PORT" FIXTURE_ARCH="$FIXTURE_ARCH" \
