@@ -211,8 +211,9 @@ class StaticContractTests(unittest.TestCase):
             runtime_fixture,
         )
         self.assertIn(
-            "build_candidate "
-            "'v0.0.0$(touch>/out/fixture-injection)'",
+            "# shellcheck disable=SC2016  "
+            "# Deliberate literal command-substitution injection probe.\n"
+            "build_candidate 'v0.0.0$(touch>/out/fixture-injection)'",
             runtime_fixture,
         )
         self.assertIn(
