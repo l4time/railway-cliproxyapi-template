@@ -191,11 +191,32 @@ class StaticContractTests(unittest.TestCase):
         self.assertIn("tests/test_runtime_updates.sh", run_script)
         self.assertIn("-e CGO_ENABLED=0", runtime_fixture)
         self.assertIn("ROOT=$(CDPATH='' cd --", runtime_fixture)
+        self.assertIn("HOST_UID=$(id -u)", runtime_fixture)
+        self.assertIn("HOST_GID=$(id -g)", runtime_fixture)
         self.assertIn(
-            "&& chmod 0755 /out/cli-proxy-api", runtime_fixture
+            '--user "${HOST_UID}:${HOST_GID}"', runtime_fixture
+        )
+        self.assertIn("-e HOME=/tmp/fixture-home", runtime_fixture)
+        self.assertIn(
+            "-e GOCACHE=/tmp/fixture-gocache", runtime_fixture
+        )
+        self.assertIn(
+            'mkdir -p "$HOME" "$GOCACHE"', runtime_fixture
+        )
+        self.assertIn(
+            "chmod 0755 /out/cli-proxy-api", runtime_fixture
         )
         self.assertNotIn(
             '\n  chmod 0755 "$FIXTURE_ROOT/cli-proxy-api"',
+            runtime_fixture,
+        )
+        self.assertIn(
+            "build_candidate "
+            "'v0.0.0$(touch>/out/fixture-injection)'",
+            runtime_fixture,
+        )
+        self.assertIn(
+            'test ! -e "$FIXTURE_ROOT/fixture-injection"',
             runtime_fixture,
         )
         self.assertNotIn("\n! docker", runtime_fixture)
