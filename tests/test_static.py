@@ -191,6 +191,13 @@ class StaticContractTests(unittest.TestCase):
         self.assertIn("tests/test_runtime_updates.sh", run_script)
         self.assertIn("-e CGO_ENABLED=0", runtime_fixture)
         self.assertIn("ROOT=$(CDPATH='' cd --", runtime_fixture)
+        self.assertIn(
+            "&& chmod 0755 /out/cli-proxy-api", runtime_fixture
+        )
+        self.assertNotIn(
+            '\n  chmod 0755 "$FIXTURE_ROOT/cli-proxy-api"',
+            runtime_fixture,
+        )
         self.assertNotIn("\n! docker", runtime_fixture)
 
 
