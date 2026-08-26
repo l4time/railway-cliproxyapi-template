@@ -191,33 +191,39 @@ class StaticContractTests(unittest.TestCase):
         self.assertIn("tests/test_runtime_updates.sh", run_script)
         self.assertIn("-e CGO_ENABLED=0", runtime_fixture)
         self.assertIn("ROOT=$(CDPATH='' cd --", runtime_fixture)
-        self.assertIn("HOST_UID=$(id -u)", runtime_fixture)
-        self.assertIn("HOST_GID=$(id -g)", runtime_fixture)
         self.assertIn(
-            '--user "${HOST_UID}:${HOST_GID}"', runtime_fixture
+            'cleanup\nmkdir -m 0700 "$FIXTURE_ROOT"',
+            runtime_fixture,
         )
-        self.assertIn("-e HOME=/tmp/fixture-home", runtime_fixture)
+        self.assertNotIn('"$FIXTURE_ROOT:/out"', runtime_fixture)
+        self.assertNotIn("--user", runtime_fixture)
+        self.assertNotIn("GOCACHE", runtime_fixture)
         self.assertIn(
-            "-e GOCACHE=/tmp/fixture-gocache", runtime_fixture
-        )
-        self.assertIn(
-            'mkdir -p "$HOME" "$GOCACHE"', runtime_fixture
+            "-o /tmp/cli-proxy-api", runtime_fixture
         )
         self.assertIn(
-            "chmod 0755 /out/cli-proxy-api", runtime_fixture
-        )
-        self.assertNotIn(
-            '\n  chmod 0755 "$FIXTURE_ROOT/cli-proxy-api"',
+            "cat /tmp/cli-proxy-api' > "
+            '"$FIXTURE_ROOT/cli-proxy-api"',
             runtime_fixture,
         )
         self.assertIn(
             "# shellcheck disable=SC2016  "
-            "# Deliberate literal command-substitution injection probe.\n"
-            "build_candidate 'v0.0.0$(touch>/out/fixture-injection)'",
+            "# Deliberate literal linker-value injection probe.\n"
+            "INJECTION_TAG="
+            "'v0.0.0$(touch>/tmp/fixture-injection)'",
             runtime_fixture,
         )
         self.assertIn(
-            'test ! -e "$FIXTURE_ROOT/fixture-injection"',
+            'grep -aF "$INJECTION_TAG" '
+            '"$FIXTURE_ROOT/cli-proxy-api"',
+            runtime_fixture,
+        )
+        self.assertIn(
+            'chmod 0755 "$FIXTURE_ROOT/cli-proxy-api"',
+            runtime_fixture,
+        )
+        self.assertIn(
+            'tar -tzf "$FIXTURE_ROOT/candidate.tar.gz"',
             runtime_fixture,
         )
         self.assertNotIn("\n! docker", runtime_fixture)
