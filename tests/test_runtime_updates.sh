@@ -37,12 +37,13 @@ build_candidate() {
   tag=$1
   docker run --rm \
     -e CGO_ENABLED=0 \
+    -e FIXTURE_TAG="$tag" \
     -v "$ROOT/tests/fake_candidate.go:/src/fake_candidate.go:ro" \
     -v "$FIXTURE_ROOT:/out" \
     -w /src \
     golang:1.25.5-bookworm \
-    /usr/local/go/bin/go build -trimpath -ldflags="-s -w -X main.version=${tag}" -o /out/cli-proxy-api fake_candidate.go
-  chmod 0755 "$FIXTURE_ROOT/cli-proxy-api"
+    /bin/sh -eu -c \
+    '/usr/local/go/bin/go build -trimpath -ldflags="-s -w -X main.version=${FIXTURE_TAG}" -o /out/cli-proxy-api fake_candidate.go && chmod 0755 /out/cli-proxy-api'
   COPYFILE_DISABLE=1 tar --format ustar -C "$FIXTURE_ROOT" -czf "$FIXTURE_ROOT/candidate.tar.gz" cli-proxy-api
   printf '%s\n' "$tag" > "$FIXTURE_ROOT/tag"
 }
