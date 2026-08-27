@@ -226,6 +226,22 @@ class StaticContractTests(unittest.TestCase):
             'tar -tzf "$FIXTURE_ROOT/candidate.tar.gz"',
             runtime_fixture,
         )
+        self.assertIn(
+            "EMBEDDED_TAG=$(sed -n "
+            "'s/^ARG EMBEDDED_VERSION=//p' "
+            '"$ROOT/Dockerfile")',
+            runtime_fixture,
+        )
+        self.assertIn("PROMOTED_TAG=$(fixture_tag 1)", runtime_fixture)
+        self.assertIn('build_candidate "$PROMOTED_TAG"', runtime_fixture)
+        self.assertIn('wait_tag "$PROMOTED_TAG"', runtime_fixture)
+        self.assertIsNone(
+            re.search(
+                r"(?m)^(?:build_candidate|wait_tag)\s+"
+                r"v\d+\.\d+\.\d+\s*$",
+                runtime_fixture,
+            )
+        )
         self.assertNotIn("\n! docker", runtime_fixture)
 
 
