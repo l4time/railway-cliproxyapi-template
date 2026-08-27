@@ -34,6 +34,40 @@ case "$(docker info --format '{{.Architecture}}')" in
   *) printf '%s\n' 'unsupported fixture architecture' >&2; exit 1 ;;
 esac
 
+EMBEDDED_TAG=$(sed -n 's/^ARG EMBEDDED_VERSION=//p' "$ROOT/Dockerfile")
+case "$EMBEDDED_TAG" in
+  v*.*.*) ;;
+  *)
+    printf 'invalid embedded fixture version: %s\n' "$EMBEDDED_TAG" >&2
+    exit 1
+    ;;
+esac
+VERSION_CORE=${EMBEDDED_TAG#v}
+VERSION_MAJOR=${VERSION_CORE%%.*}
+VERSION_REMAINDER=${VERSION_CORE#*.}
+VERSION_MINOR=${VERSION_REMAINDER%%.*}
+VERSION_PATCH=${VERSION_REMAINDER#*.}
+case "${VERSION_MAJOR}${VERSION_MINOR}${VERSION_PATCH}" in
+  ''|*[!0-9]*)
+    printf 'invalid embedded fixture version: %s\n' "$EMBEDDED_TAG" >&2
+    exit 1
+    ;;
+esac
+
+fixture_tag() {
+  offset=$1
+  printf 'v%s.%s.%s\n' \
+    "$VERSION_MAJOR" "$VERSION_MINOR" "$((VERSION_PATCH + offset))"
+}
+
+PROMOTED_TAG=$(fixture_tag 1)
+BAD_LIVE_TAG=$(fixture_tag 2)
+TRANSIENT_TAG=$(fixture_tag 3)
+BAD_ARCHIVE_TAG=$(fixture_tag 4)
+MISMATCH_RELEASE_TAG=$(fixture_tag 5)
+MISMATCH_BINARY_TAG=$(fixture_tag 99)
+PRIVATE_AUTH_TAG=$(fixture_tag 6)
+
 build_candidate() {
   tag=$1
   docker run --rm \
@@ -100,6 +134,7 @@ wait_tag() {
   until [ "$(docker exec "$CONTAINER" sed -n '/"current":/ {n;s/.*"tag": "\([^"]*\)".*/\1/p;}' /data/update/ledger.json)" = "$want" ]; do
     tries=$((tries + 1))
     [ "$tries" -lt 150 ] || {
+      printf 'expected runtime fixture tag %s was not observed\n' "$want" >&2
       docker exec "$CONTAINER" sed -n '1,120p' /data/update/ledger.json >&2
       return 1
     }
@@ -134,11 +169,11 @@ build_candidate "$INJECTION_TAG"
 grep -aF "$INJECTION_TAG" "$FIXTURE_ROOT/cli-proxy-api" >/dev/null
 INJECTION_HASH=$(shasum -a 256 "$FIXTURE_ROOT/cli-proxy-api" | cut -d' ' -f1)
 printf '%s\n' 'fixture tag shell-injection boundary: PASS'
-build_candidate v7.2.142
+build_candidate "$PROMOTED_TAG"
 [ -x "$FIXTURE_ROOT/cli-proxy-api" ]
 [ "$(shasum -a 256 "$FIXTURE_ROOT/cli-proxy-api" | cut -d' ' -f1)" != "$INJECTION_HASH" ]
 [ "$(tar -tzf "$FIXTURE_ROOT/candidate.tar.gz")" = "cli-proxy-api" ]
-[ "$(cat "$FIXTURE_ROOT/tag")" = "v7.2.142" ]
+[ "$(cat "$FIXTURE_ROOT/tag")" = "$PROMOTED_TAG" ]
 set_scenario good
 [ "$(cat "$FIXTURE_ROOT/scenario")" = "good" ]
 printf '%s\n' 'container-local build and repeated host-owned fixture writes: PASS'
@@ -149,7 +184,7 @@ sleep 0.5
 
 start_app normal
 wait_health
-wait_tag v7.2.142
+wait_tag "$PROMOTED_TAG"
 wait_idle
 curl -fsS -H "Authorization: Bearer ${PROXY_KEY}" "http://127.0.0.1:${PORT}/v1/models" >/dev/null
 curl -fsS -H "Authorization: Bearer ${MANAGEMENT_KEY}" "http://127.0.0.1:${PORT}/v0/management/config" >/dev/null
@@ -157,32 +192,32 @@ printf '%s\n' 'good promotion and live semantic validation: PASS'
 
 docker restart "$CONTAINER" >/dev/null
 wait_health
-wait_tag v7.2.142
+wait_tag "$PROMOTED_TAG"
 printf '%s\n' 'promoted binary restart persistence and equal-tag no-op: PASS'
 
-build_candidate v7.2.143
+build_candidate "$BAD_LIVE_TAG"
 set_scenario good
 force_overdue
 start_app bad-live
 wait_health
 wait_failure_class deterministic
-wait_tag v7.2.142
+wait_tag "$PROMOTED_TAG"
 wait_idle
 printf '%s\n' 'live semantic failure automatic rollback: PASS'
 
 docker restart "$CONTAINER" >/dev/null
 wait_health
-wait_tag v7.2.142
+wait_tag "$PROMOTED_TAG"
 wait_idle
 printf '%s\n' 'restart after live rollback before next check: PASS'
 
-build_candidate v7.2.144
+build_candidate "$TRANSIENT_TAG"
 set_scenario transient
 force_overdue
 start_app normal
 wait_health
 wait_failure_class transient
-if docker exec "$CONTAINER" grep -F 'v7.2.144@' /data/update/ledger.json >/dev/null; then
+if docker exec "$CONTAINER" grep -F "${TRANSIENT_TAG}@" /data/update/ledger.json >/dev/null; then
   printf '%s\n' 'transient acquisition was incorrectly quarantined' >&2
   exit 1
 fi
@@ -193,47 +228,47 @@ force_overdue
 start_app normal
 wait_health
 wait_failure_class deterministic
-docker exec "$CONTAINER" grep -F 'v7.2.144@' /data/update/ledger.json >/dev/null
+docker exec "$CONTAINER" grep -F "${TRANSIENT_TAG}@" /data/update/ledger.json >/dev/null
 printf '%s\n' 'bad checksum deterministic quarantine: PASS'
 
-build_candidate v7.2.145
+build_candidate "$BAD_ARCHIVE_TAG"
 set_scenario good
 printf '%s\n' 'not-a-gzip' > "$FIXTURE_ROOT/candidate.tar.gz"
 force_overdue
 start_app normal
 wait_health
 wait_failure_class deterministic
-docker exec "$CONTAINER" grep -F 'v7.2.145@' /data/update/ledger.json >/dev/null
+docker exec "$CONTAINER" grep -F "${BAD_ARCHIVE_TAG}@" /data/update/ledger.json >/dev/null
 printf '%s\n' 'bad archive deterministic quarantine: PASS'
 
-build_candidate v9.9.9
-printf '%s\n' 'v7.2.146' > "$FIXTURE_ROOT/tag"
+build_candidate "$MISMATCH_BINARY_TAG"
+printf '%s\n' "$MISMATCH_RELEASE_TAG" > "$FIXTURE_ROOT/tag"
 set_scenario good
 force_overdue
 start_app normal
 wait_health
 wait_failure_class deterministic
-docker exec "$CONTAINER" grep -F 'v7.2.146@' /data/update/ledger.json >/dev/null
+docker exec "$CONTAINER" grep -F "${MISMATCH_RELEASE_TAG}@" /data/update/ledger.json >/dev/null
 printf '%s\n' 'version mismatch private-probe quarantine: PASS'
 
-build_candidate v7.2.147
+build_candidate "$PRIVATE_AUTH_TAG"
 set_scenario good
 force_overdue
 start_app bad-probe-auth
 wait_health
 wait_failure_class deterministic
-wait_tag v7.2.142
+wait_tag "$PROMOTED_TAG"
 wait_idle
-docker exec "$CONTAINER" grep -F 'v7.2.147@' /data/update/ledger.json >/dev/null
+docker exec "$CONTAINER" grep -F "${PRIVATE_AUTH_TAG}@" /data/update/ledger.json >/dev/null
 printf '%s\n' 'correct-version private auth semantic failure quarantine: PASS'
 
-build_candidate v7.2.142
+build_candidate "$PROMOTED_TAG"
 set_scenario same-tag-drift
 force_overdue
 start_app normal
 wait_health
 wait_failure_class security
-docker exec "$CONTAINER" grep -F 'v7.2.142@ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' /data/update/ledger.json >/dev/null
+docker exec "$CONTAINER" grep -F "${PROMOTED_TAG}@ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" /data/update/ledger.json >/dev/null
 printf '%s\n' 'same-tag checksum drift security quarantine: PASS'
 
 docker exec "$CONTAINER" sh -c '
