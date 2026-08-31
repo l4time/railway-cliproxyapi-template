@@ -79,6 +79,8 @@ export HOME="$DATA_DIR/home"
 set -- /usr/local/bin/health-proxy \
   -listen "0.0.0.0:${PORT:-8080}" \
   -upstream "127.0.0.1:8317" \
+  -proxy-upstream "127.0.0.1:8320" \
+  -shim-binary "/usr/local/bin/responses-compat" \
   -binary "/CLIProxyAPI/CLIProxyAPI" \
   -config "$CONFIG_FILE" \
   -proxy-key-fifo "$SUPERVISOR_PROXY_FIFO" \

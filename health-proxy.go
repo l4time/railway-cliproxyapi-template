@@ -218,6 +218,8 @@ type childResult struct {
 func main() {
 	listen := flag.String("listen", "0.0.0.0:8080", "public listen address")
 	upstream := flag.String("upstream", "127.0.0.1:8317", "private upstream address")
+	proxyUpstream := flag.String("proxy-upstream", "", "optional public reverse-proxy target")
+	shimBinary := flag.String("shim-binary", "", "optional compatibility shim executable")
 	binary := flag.String("binary", "/CLIProxyAPI/CLIProxyAPI", "embedded upstream binary")
 	config := flag.String("config", "/data/state/config.yaml", "upstream config")
 	updateRoot := flag.String("update-root", "/data/update", "protected updater state")
@@ -255,7 +257,25 @@ func main() {
 		log.Fatalf("upstream start failed: %v", err)
 	}
 
-	target, err := url.Parse("http://" + *upstream)
+	var shim *exec.Cmd
+	var shimExit <-chan error
+	if *shimBinary != "" {
+		shim = exec.Command(*shimBinary)
+		shim.Stdout, shim.Stderr, shim.Env = os.Stdout, os.Stderr, sanitizedChildEnvironment()
+		if err := shim.Start(); err != nil {
+			u.stopChild(syscall.SIGTERM)
+			log.Fatalf("compatibility shim start failed: %v", err)
+		}
+		done := make(chan error, 1)
+		shimExit = done
+		go func() { done <- shim.Wait() }()
+	}
+
+	publicUpstream := *proxyUpstream
+	if publicUpstream == "" {
+		publicUpstream = *upstream
+	}
+	target, err := url.Parse("http://" + publicUpstream)
 	if err != nil {
 		log.Fatalf("invalid private upstream: %v", err)
 	}
@@ -284,7 +304,7 @@ func main() {
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      5 * time.Minute,
+		WriteTimeout:      15 * time.Minute,
 		IdleTimeout:       30 * time.Second,
 		MaxHeaderBytes:    32 << 10,
 	}
@@ -300,6 +320,7 @@ func main() {
 	for {
 		select {
 		case sig := <-signals:
+			signalProcess(shim, sig)
 			u.stopChild(sig)
 			goto shutdown
 		case err := <-serverErr:
@@ -307,7 +328,13 @@ func main() {
 				log.Printf("public listener stopped")
 				exitCode = 1
 			}
+			signalProcess(shim, syscall.SIGTERM)
 			u.stopChild(syscall.SIGTERM)
+			goto shutdown
+		case <-shimExit:
+			log.Printf("compatibility shim stopped")
+			u.stopChild(syscall.SIGTERM)
+			exitCode = 1
 			goto shutdown
 		case result := <-u.childExit:
 			if u.ignoreStaleExit(result) {
@@ -325,7 +352,27 @@ shutdown:
 	ctxShutdown, stop := context.WithTimeout(context.Background(), 5*time.Second)
 	defer stop()
 	_ = server.Shutdown(ctxShutdown)
+	waitProcess(shim, 5*time.Second)
 	os.Exit(exitCode)
+}
+
+func signalProcess(cmd *exec.Cmd, sig os.Signal) {
+	if cmd != nil && cmd.Process != nil && cmd.ProcessState == nil {
+		_ = cmd.Process.Signal(sig)
+	}
+}
+
+func waitProcess(cmd *exec.Cmd, timeout time.Duration) {
+	if cmd == nil || cmd.Process == nil || cmd.ProcessState != nil {
+		return
+	}
+	deadline := time.Now().Add(timeout)
+	for cmd.ProcessState == nil && time.Now().Before(deadline) {
+		time.Sleep(25 * time.Millisecond)
+	}
+	if cmd.ProcessState == nil {
+		_ = cmd.Process.Kill()
+	}
 }
 
 func reapInheritedWriters(expected int, timeout time.Duration) error {

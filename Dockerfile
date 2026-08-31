@@ -17,11 +17,15 @@ ADD --checksum=sha256:e2643e0875e0024e5ff9ddf4569e4c58611ab0456aeb6fa6065ed3e6c2
 ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@sha256:238691ac26ce55e4d1c5219d72e3ad74838f81eda26359912eeb415e2820d163
 FROM ${UPSTREAM_IMAGE}
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=health_proxy_builder /out/health-proxy /usr/local/bin/health-proxy
 COPY --from=health_proxy_builder /out/config-reconciler /usr/local/bin/config-reconciler
 COPY --from=management_asset /management.html /opt/cliproxy/management.html
+COPY edge-shim.py /usr/local/bin/responses-compat
 COPY entrypoint.sh /usr/local/bin/cliproxy-entrypoint
-RUN chmod 0755 /usr/local/bin/health-proxy /usr/local/bin/config-reconciler /usr/local/bin/cliproxy-entrypoint \
+RUN chmod 0755 /usr/local/bin/health-proxy /usr/local/bin/config-reconciler /usr/local/bin/responses-compat /usr/local/bin/cliproxy-entrypoint \
     && chmod 0644 /opt/cliproxy/management.html \
     && groupadd --gid 10001 cliproxy \
     && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /data/home --shell /usr/sbin/nologin cliproxy

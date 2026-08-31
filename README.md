@@ -50,6 +50,13 @@ Browser -- pinned /management.html --+--> Railway HTTPS :8080
                     /data/auth  /data/home  /data/state  /data/update
 ```
 
+This migration branch adds a loopback Responses compatibility process between
+the public supervisor and CLIProxyAPI. It reconstructs stateless
+`previous_response_id` tool chains for clients that send `store: false`, keeps
+the bounded 24-hour cache under `/data/state`, and starts a new chain when a
+compaction summary is detected. All non-Responses routes remain transparent
+pass-throughs to CLIProxyAPI.
+
 The root entrypoint performs only the narrow ownership/configuration bootstrap
 needed for a fresh Railway volume. It validates both keys, initializes the
 three app-owned directories, atomically initializes or reconciles the protected
