@@ -66,6 +66,7 @@ def init_cache():
             """
         )
         connection.execute("CREATE INDEX IF NOT EXISTS responses_ts ON responses(ts)")
+    os.chmod(CACHE_DB_PATH, 0o600)
     migrate_legacy_cache()
     prune_cache()
 
@@ -693,6 +694,7 @@ class ShimHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    os.umask(0o077)
     init_cache()
     server = ThreadingHTTPServer(("0.0.0.0", 8320), ShimHandler)
     print("edge shim listening on :8320", flush=True)
