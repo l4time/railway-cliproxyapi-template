@@ -1486,6 +1486,33 @@ ws-auth: true
 `, port))
 }
 
+func candidateVersionMatches(output []byte, tag string) bool {
+	if _, err := parseSemver(tag); err != nil {
+		return false
+	}
+	seen := 0
+	for _, line := range strings.Split(string(output), "\n") {
+		const prefix = "CLIProxyAPI Version: "
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		seen++
+		version, _, found := strings.Cut(strings.TrimPrefix(line, prefix), ", Commit: ")
+		if !found {
+			return false
+		}
+		// Official release archives omit the tag's v prefix; Docker builds
+		// retain it. Normalize only that prefix, then enforce exact stable semver.
+		if !strings.HasPrefix(version, "v") {
+			version = "v" + version
+		}
+		if _, err := parseSemver(version); err != nil || version != tag {
+			return false
+		}
+	}
+	return seen == 1
+}
+
 func (u *updater) probeCandidate(ctx context.Context, tag string) error {
 	u.mu.Lock()
 	u.ledger.Phase, u.ledger.CrashJournal = "probe", "isolated candidate probe"
@@ -1515,7 +1542,7 @@ func (u *updater) probeCandidate(ctx context.Context, tag string) error {
 	versionCmd.Env = sanitizedChildEnvironment()
 	versionOutput, _ := versionCmd.CombinedOutput()
 	cancelVersion()
-	if !strings.Contains(string(versionOutput), "CLIProxyAPI Version: "+tag+",") {
+	if !candidateVersionMatches(versionOutput, tag) {
 		return errors.New("candidate version mismatch")
 	}
 	probeCtx, cancelProbe := context.WithCancel(ctx)

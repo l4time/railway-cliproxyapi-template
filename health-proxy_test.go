@@ -24,6 +24,30 @@ import (
 	"time"
 )
 
+func TestCandidateVersionMatchesOfficialBuildFormats(t *testing.T) {
+	for _, tc := range []struct {
+		output string
+		want   bool
+	}{
+		{"CLIProxyAPI Version: 8.0.15, Commit: a4acc9f7, BuiltAt: 2026-10-04T22:29:59Z\nflag provided but not defined: -version\n", true},
+		{"CLIProxyAPI Version: v8.0.15, Commit: fixture, BuiltAt: fixture\n", true},
+		{"CLIProxyAPI Version: 8.0.16, Commit: fixture, BuiltAt: fixture\n", false},
+		{"CLIProxyAPI Version: 08.0.15, Commit: fixture, BuiltAt: fixture\n", false},
+		{"CLIProxyAPI Version: 8.0.15-beta, Commit: fixture, BuiltAt: fixture\n", false},
+		{"CLIProxyAPI Version: vv8.0.15, Commit: fixture, BuiltAt: fixture\n", false},
+		{"untrusted CLIProxyAPI Version: 8.0.15, Commit: fixture\n", false},
+		{"CLIProxyAPI Version: 8.0.15\n", false},
+		{"CLIProxyAPI Version: 8.0.15, Commit: one\nCLIProxyAPI Version: 8.0.15, Commit: two\n", false},
+	} {
+		if got := candidateVersionMatches([]byte(tc.output), "v8.0.15"); got != tc.want {
+			t.Errorf("banner %q: got %v, want %v", tc.output, got, tc.want)
+		}
+	}
+	if candidateVersionMatches([]byte("CLIProxyAPI Version: 8.0.15, Commit: fixture\n"), "8.0.15") {
+		t.Fatal("accepted noncanonical release tag")
+	}
+}
+
 func TestExactSemver(t *testing.T) {
 	valid := []string{"v0.0.0", "v7.2.141", "v4294967295.1.2"}
 	for _, value := range valid {

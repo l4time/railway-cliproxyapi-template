@@ -29,7 +29,7 @@ func configValue(data []byte, prefix string) string {
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
-		fmt.Printf("CLIProxyAPI Version: %s, Commit: fixture, BuiltAt: fixture\n", version)
+		fmt.Printf("CLIProxyAPI Version: %s, Commit: fixture, BuiltAt: fixture\n", strings.TrimPrefix(version, "v"))
 		return
 	}
 	configPath := flag.String("config", "", "config")

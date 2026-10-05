@@ -5,6 +5,10 @@ here.
 
 ## 2026-10-05
 
+- Repair consumer auto-updates: official release archives report versions
+  without the leading `v` used by Docker images. Accept both exact stable
+  formats, reject mismatched/ambiguous banners, and exercise the official
+  archive format throughout the updater fixtures.
 - Fix a release-controller fixture race that could mistake the preceding
   candidate's retained failure for completion of a new candidate check. Tests
   now require the exact tag/checksum quarantine record in an idle ledger.
