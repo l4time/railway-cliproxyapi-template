@@ -3,6 +3,14 @@
 All notable changes to CLIProxyAPI — Daily Auto-Update are documented
 here.
 
+## 2026-10-05
+
+- Fix a release-controller fixture race that could mistake the preceding
+  candidate's retained failure for completion of a new candidate check. Tests
+  now require the exact tag/checksum quarantine record in an idle ledger.
+- Add regression coverage for stale failures, in-progress probes, checksum
+  mismatches and failure-class mismatches. Runtime rejection policy is unchanged.
+
 ## 2026-08-25
 
 - Add the consumer-side stable-release updater: 6-hour checks plus bounded

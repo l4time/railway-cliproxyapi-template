@@ -152,6 +152,25 @@ wait_failure_class() {
   done
 }
 
+wait_quarantine() {
+  candidate_tag=$1
+  failure_class=$2
+  candidate_checksum=${3:-$(shasum -a 256 "$FIXTURE_ROOT/candidate.tar.gz" | cut -d' ' -f1)}
+  identity="${candidate_tag}@${candidate_checksum}"
+  tries=0
+  # A retained failure class belongs to an earlier attempt until this exact
+  # candidate is quarantined. Read one atomic ledger snapshot per observation.
+  until docker exec "$CONTAINER" cat /data/update/ledger.json 2>/dev/null |
+      python3 "$ROOT/tests/quarantine_observation.py" "$failure_class" "$identity"; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 150 ] || {
+      printf 'expected %s quarantine for %s was not observed\n' "$failure_class" "$candidate_tag" >&2
+      return 1
+    }
+    sleep 0.2
+  done
+}
+
 wait_idle() {
   tries=0
   until docker exec "$CONTAINER" grep -F '"phase": "idle"' /data/update/ledger.json >/dev/null 2>&1; do
@@ -200,7 +219,7 @@ set_scenario good
 force_overdue
 start_app bad-live
 wait_health
-wait_failure_class deterministic
+wait_quarantine "$BAD_LIVE_TAG" deterministic
 wait_tag "$PROMOTED_TAG"
 wait_idle
 printf '%s\n' 'live semantic failure automatic rollback: PASS'
@@ -227,8 +246,7 @@ set_scenario bad-checksum
 force_overdue
 start_app normal
 wait_health
-wait_failure_class deterministic
-docker exec "$CONTAINER" grep -F "${TRANSIENT_TAG}@" /data/update/ledger.json >/dev/null
+wait_quarantine "$TRANSIENT_TAG" deterministic 0000000000000000000000000000000000000000000000000000000000000000
 printf '%s\n' 'bad checksum deterministic quarantine: PASS'
 
 build_candidate "$BAD_ARCHIVE_TAG"
@@ -237,8 +255,7 @@ printf '%s\n' 'not-a-gzip' > "$FIXTURE_ROOT/candidate.tar.gz"
 force_overdue
 start_app normal
 wait_health
-wait_failure_class deterministic
-docker exec "$CONTAINER" grep -F "${BAD_ARCHIVE_TAG}@" /data/update/ledger.json >/dev/null
+wait_quarantine "$BAD_ARCHIVE_TAG" deterministic
 printf '%s\n' 'bad archive deterministic quarantine: PASS'
 
 build_candidate "$MISMATCH_BINARY_TAG"
@@ -247,8 +264,7 @@ set_scenario good
 force_overdue
 start_app normal
 wait_health
-wait_failure_class deterministic
-docker exec "$CONTAINER" grep -F "${MISMATCH_RELEASE_TAG}@" /data/update/ledger.json >/dev/null
+wait_quarantine "$MISMATCH_RELEASE_TAG" deterministic
 printf '%s\n' 'version mismatch private-probe quarantine: PASS'
 
 build_candidate "$PRIVATE_AUTH_TAG"
@@ -256,10 +272,9 @@ set_scenario good
 force_overdue
 start_app bad-probe-auth
 wait_health
-wait_failure_class deterministic
+wait_quarantine "$PRIVATE_AUTH_TAG" deterministic
 wait_tag "$PROMOTED_TAG"
 wait_idle
-docker exec "$CONTAINER" grep -F "${PRIVATE_AUTH_TAG}@" /data/update/ledger.json >/dev/null
 printf '%s\n' 'correct-version private auth semantic failure quarantine: PASS'
 
 build_candidate "$PROMOTED_TAG"
@@ -267,8 +282,7 @@ set_scenario same-tag-drift
 force_overdue
 start_app normal
 wait_health
-wait_failure_class security
-docker exec "$CONTAINER" grep -F "${PROMOTED_TAG}@ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" /data/update/ledger.json >/dev/null
+wait_quarantine "$PROMOTED_TAG" security ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 printf '%s\n' 'same-tag checksum drift security quarantine: PASS'
 
 docker exec "$CONTAINER" sh -c '
