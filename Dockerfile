@@ -1,6 +1,6 @@
-ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@sha256:873ec3df3b673a82f7d956d4636c7736b0c961dc6ee28f9fb403238b2898dc0d
+ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@sha256:2e098c0b3c79571f0c3150c8f27725ab2645b6a463cf6c4f862e4e86343466a1
 FROM golang:1.25.5-bookworm@sha256:d9132cce84391efab786495288756d60e1da215b1f94e87860aeefc3d4c45b6d AS health_proxy_builder
-ARG EMBEDDED_VERSION=v8.0.60
+ARG EMBEDDED_VERSION=v8.0.67
 WORKDIR /src
 COPY health-proxy.go .
 RUN CGO_ENABLED=0 go build -trimpath \
@@ -14,7 +14,7 @@ ADD --checksum=sha256:e2643e0875e0024e5ff9ddf4569e4c58611ab0456aeb6fa6065ed3e6c2
     https://github.com/router-for-me/Cli-Proxy-API-Management-Center/releases/download/v1.22.6/management.html \
     /management.html
 
-ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@sha256:873ec3df3b673a82f7d956d4636c7736b0c961dc6ee28f9fb403238b2898dc0d
+ARG UPSTREAM_IMAGE=eceasy/cli-proxy-api@sha256:2e098c0b3c79571f0c3150c8f27725ab2645b6a463cf6c4f862e4e86343466a1
 FROM ${UPSTREAM_IMAGE}
 
 COPY --from=health_proxy_builder /out/health-proxy /usr/local/bin/health-proxy
