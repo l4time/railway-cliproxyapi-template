@@ -137,6 +137,29 @@ func TestDisableCoolingTrueFailsClosed(t *testing.T) {
 	}
 }
 
+func TestUpstreamServerIDSurvivesReconciliation(t *testing.T) {
+	proxyKey := strings.Repeat("a", 32)
+	managementKey := strings.Repeat("b", 32)
+	base := string(initialConfig(proxyKey, managementKey))
+	server := "server:\n  server-id: d6f97852-915e-4f01-a617-8cf771e7508a\n"
+	actual, err := reconcileConfig([]byte(base+server), proxyKey, managementKey)
+	if err != nil || !bytes.Contains(actual, []byte(server)) {
+		t.Fatalf("upstream server ID was not preserved: %v", err)
+	}
+	for _, bad := range []string{
+		"server: invalid\n",
+		"server:\n  server-id: invalid\n",
+		"server:\n  server-id: 00000000-0000-0000-0000-000000000000\n",
+		server + "  host: 0.0.0.0\n",
+		server + "  port: 9999\n",
+		server + server,
+	} {
+		if _, err := reconcileConfig([]byte(base+bad), proxyKey, managementKey); err == nil {
+			t.Fatal("unsafe or ambiguous server configuration was accepted")
+		}
+	}
+}
+
 func TestUnsafeDiscoveryConfigsFailClosed(t *testing.T) {
 	proxyKey := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	managementKey := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -116,11 +117,14 @@ type strictConfig struct {
 
 type preservedConfig struct {
 	debug               bool
+	serverID            string
 	requestRetry        *int
 	maxRetryCredentials *int
 	maxRetryInterval    *int
 	discovery           *discoveryConfig
 }
+
+var serverIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 type discoveryConfig struct {
 	enabled     *bool
@@ -287,6 +291,9 @@ func renderConfig(proxyKey, managementKey string, preserved preservedConfig) []b
 			"usage-statistics-enabled: false\n" +
 			"ws-auth: true\n",
 	)
+	if preserved.serverID != "" {
+		output.WriteString("server:\n  server-id: " + preserved.serverID + "\n")
+	}
 	if preserved.discovery != nil {
 		output.WriteString("discovery:\n")
 		if preserved.discovery.enabled != nil {
@@ -514,7 +521,7 @@ func validateStrictConfig(config strictConfig) (preservedConfig, error) {
 		"logging-to-file": true, "usage-statistics-enabled": true,
 		"credential-concurrency": true, "credential-in-flight": true,
 		"redis-usage-queue-retention-seconds": true, "disable-cooling": true,
-		"ws-auth": true,
+		"ws-auth": true, "server": true,
 		"request-retry": true, "max-retry-credentials": true,
 		"max-retry-interval": true,
 	}
@@ -587,6 +594,18 @@ func validateStrictConfig(config strictConfig) (preservedConfig, error) {
 		return preservedConfig{}, err
 	}
 	preserved := preservedConfig{debug: debug}
+	// CLIProxyAPI 8.1 persists its identity on startup, even with legacy config.
+	// Accept only that field. Nested server settings could override our listener.
+	if server, exists := config.nodes["server"]; exists {
+		if server.kind != "mapping" || !equalOrder(server.order, []string{"server-id"}) {
+			return preservedConfig{}, errors.New("unsupported server mapping")
+		}
+		id := server.mapping["server-id"]
+		if !serverIDPattern.MatchString(id) || id == "00000000-0000-0000-0000-000000000000" {
+			return preservedConfig{}, errors.New("invalid server ID")
+		}
+		preserved.serverID = strings.ToLower(id)
+	}
 	for name, target := range map[string]**int{
 		"request-retry":         &preserved.requestRetry,
 		"max-retry-credentials": &preserved.maxRetryCredentials,

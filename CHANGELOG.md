@@ -3,6 +3,12 @@
 All notable changes to CLIProxyAPI — Daily Auto-Update are documented
 here.
 
+## 2026-11-24
+
+- Preserve the server UUID written by CLIProxyAPI 8.1 on startup. The wrapper
+  accepts that field in the `server` block and still rejects any other field in
+  the block, including listener overrides.
+
 ## 2026-10-05
 
 - Repair consumer auto-updates: official release archives report versions
